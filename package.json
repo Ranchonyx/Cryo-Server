@@ -1,0 +1,40 @@
+{
+  "name": "cryo-server",
+  "version": "1.0.1",
+  "keywords": [],
+  "license": "ISC",
+  "description": "",
+  "author": {
+    "name": "Ranchonyx",
+    "url": "https://fjanetzki.nrw",
+    "email": "info@fjanetzki.nrw"
+  },
+  "repository": {
+    "url": "https://github.com/Ranchonyx/Cryo"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/typings/index.d.ts"
+    }
+  },
+  "dependencies": {
+    "@types/node-cleanup": "^2.1.5",
+    "express": "^4.21.0",
+    "express-session": "^1.18.0",
+    "node-cleanup": "^2.1.2",
+    "ws": "^8.18.0"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/express-session": "^1.18.0",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^22.4.1",
+    "@types/ws": "^8.5.12",
+    "typescript": "5.7.3"
+  },
+  "scripts": {
+    "prepare": "tsc"
+  }
+}
