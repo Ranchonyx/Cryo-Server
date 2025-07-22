@@ -1,10 +1,9 @@
 import { CryoWebsocketServer } from "./CryoWebsocketServer/CryoWebsocketServer.js";
 /**
- * Create a Cryo server and attach it to an Express.js app
- * @param pApp - The express app to attach the server to
+ * Create a Cryo server
  * @param pTokenValidator - An implementation of the {@link ITokenValidator} interface to validate incoming websocket connections
  * @param options - Optional arguments, {@link CryoWebsocketServerOptions}
  * */
-export async function cryo(pApp, pTokenValidator, options) {
-    return CryoWebsocketServer.AttachToApp(pApp, pTokenValidator, options);
+export async function cryo(pTokenValidator, options) {
+    return CryoWebsocketServer.AttachToApp(pTokenValidator, options);
 }

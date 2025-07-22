@@ -1,4 +1,3 @@
-import {Express, Request} from "express";
 import {EventEmitter} from "node:events";
 import {UUID} from "node:crypto";
 import {Store} from "express-session";
@@ -36,24 +35,12 @@ export declare class CryoServerWebsocketSession extends EventEmitter implements 
 /**
  * CryoWebsocketServer typings
  * */
-export interface ISecretGenerator {
-    generate(): Promise<string>;
-}
-
-export interface ISessionIDGenerator {
-    generate(req: Request): string;
-}
-
 export interface ITokenValidator {
     validate(token: string): Promise<boolean>;
 }
 
 export type CryoWebsocketServerOptions = {
-    sessionStore?: Store;
-    secretGenerator?: ISecretGenerator;
-    sessionIDGenerator?: ISessionIDGenerator;
     keepAliveIntervalMs?: number;
-    socketPath?: string;
     port?: number;
 }
 
@@ -74,9 +61,8 @@ export declare class CryoWebsocketServer extends EventEmitter implements CryoWeb
 }
 
 /**
- * Create a Cryo server and attach it to an Express.js app
- * @param pApp - The express app to attach the server to
+ * Create a Cryo server
  * @param pTokenValidator - An implementation of the {@link ITokenValidator} interface to validate incoming websocket connections
  * @param options - Optional arguments, {@link CryoWebsocketServerOptions}
  * */
-export declare function cryo(pApp: Express, pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions): Promise<CryoWebsocketServer>;
+export declare function cryo(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions): Promise<CryoWebsocketServer>;

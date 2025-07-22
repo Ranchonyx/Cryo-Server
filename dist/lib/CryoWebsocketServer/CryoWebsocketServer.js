@@ -1,7 +1,4 @@
 import http from "node:http";
-import { json, urlencoded } from "express";
-import { randomBytes } from "node:crypto";
-import session, { MemoryStore } from "express-session";
 import { WebSocketServer } from "ws";
 import { clearInterval, setInterval } from "node:timers";
 import { EventEmitter } from "node:events";
@@ -9,10 +6,8 @@ import Guard from "../Common/Util/Guard.js";
 import { CryoServerWebsocketSession } from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 export class CryoWebsocketServer extends EventEmitter {
-    expressApp;
     server;
     tokenValidator;
-    sessionParser;
     wsServer;
     WebsocketHearbeatInterval;
     sessions = [];
@@ -20,34 +15,17 @@ export class CryoWebsocketServer extends EventEmitter {
     /*
     * Attach a CryoWebsocketServer to an express.JS app
     * */
-    static async AttachToApp(pApp, pTokenValidator, options) {
-        const secret = options && options.secretGenerator ? await options.secretGenerator.generate() : randomBytes(512).toString("hex");
-        const genid = options && options.sessionIDGenerator ? options.sessionIDGenerator.generate.bind(options.sessionIDGenerator) : undefined;
-        const store = options && options.sessionStore || new MemoryStore();
+    static async AttachToApp(pTokenValidator, options) {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
-        const server = http.createServer(pApp);
-        const sessionParser = session({
-            secret: secret,
-            store: store,
-            genid: genid,
-            resave: true,
-            saveUninitialized: false,
-            cookie: {
-                secure: "auto",
-                maxAge: 90000
-            }
-        });
-        return new CryoWebsocketServer(pApp, server, pTokenValidator, sessionParser, keepAliveInterval, sockPort);
+        const server = http.createServer();
+        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort);
     }
-    constructor(expressApp, server, tokenValidator, sessionParser, keepAliveInterval, socketPort) {
+    constructor(server, tokenValidator, keepAliveInterval, socketPort) {
         super();
-        this.expressApp = expressApp;
         this.server = server;
         this.tokenValidator = tokenValidator;
-        this.sessionParser = sessionParser;
         this.log = CreateDebugLogger("CRYO_SERVER");
-        this.expressApp.use(json(), this.sessionParser, urlencoded({ extended: true }));
         this.wsServer = new WebSocketServer({ noServer: true });
         this.WebsocketHearbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
             .ref();
@@ -153,9 +131,6 @@ export class CryoWebsocketServer extends EventEmitter {
             session.Destroy();
         this.wsServer.removeAllListeners();
         this.wsServer.close();
-    }
-    get app() {
-        return this.expressApp;
     }
     get socketServer() {
         return this.wsServer;
