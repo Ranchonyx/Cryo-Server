@@ -67,8 +67,13 @@ export class CryoWebsocketServer extends EventEmitter {
     async HTTPUpgradeCallback(request, socket, head) {
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         this.log(`Upgrade request from ${socketFmt} ...`);
-        const authorization = request.headers.authorization;
-        const x_cryo_sid = request.headers["x-cryo-sid"];
+        const full_host_url = new URL(`ws://${process.env.HOST ?? 'localhost'}${request.url}`);
+        const authorization = full_host_url.searchParams.get("authorization");
+        const x_cryo_sid = full_host_url.searchParams.get("x-cryo-sid");
+        /*
+                const authorization = request.headers.authorization;
+                const x_cryo_sid = request.headers["x-cryo-sid"];
+        */
         //Check auth header
         if (!authorization) {
             this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No authorization header.`);
