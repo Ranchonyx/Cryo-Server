@@ -89,8 +89,15 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         this.log(`Upgrade request from ${socketFmt} ...`);
 
-        const authorization = request.headers.authorization;
-        const x_cryo_sid = request.headers["x-cryo-sid"];
+        const full_host_url = new URL(request.url!);
+
+        const authorization = full_host_url.searchParams.get("authorization");
+        const x_cryo_sid = full_host_url.searchParams.get("x-cryo-sid");
+
+        /*
+                const authorization = request.headers.authorization;
+                const x_cryo_sid = request.headers["x-cryo-sid"];
+        */
 
         //Check auth header
         if (!authorization) {
@@ -143,9 +150,9 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         client.isAlive = true;
         client.sessionId = clientSid;
 
-/*
-        await this.databaseAccessor.set(clientSid, "sid", clientSid);
-*/
+        /*
+                await this.databaseAccessor.set(clientSid, "sid", clientSid);
+        */
 
         const session = new CryoServerWebsocketSession(token, client, socket, request, socketFmt);
 
