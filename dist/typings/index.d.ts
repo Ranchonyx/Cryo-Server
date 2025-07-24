@@ -2,6 +2,7 @@ import {EventEmitter} from "node:events";
 import {UUID} from "node:crypto";
 import {Store} from "express-session";
 import http from "node:http";
+import {CryoExtension} from "../../src/CryoExtension/CryoExtension";
 
 /**
  * CryoServerWebsocketSession typings
@@ -24,13 +25,14 @@ export interface CryoServerWebsocketSession {
 }
 
 export declare class CryoServerWebsocketSession extends EventEmitter implements CryoServerWebsocketSession {
-    public async SendPing(): Promise<void>;
+    public SendPing(): Promise<void>;
 
-    public async SendUTF8(message: string): Promise<void>;
+    public SendUTF8(message: string): Promise<void>;
 
-    public async SendBinary(message: Buffer): Promise<void>
+    public SendBinary(message: Buffer): Promise<void>
 
     public Destroy(): void;
+
     public get http_server(): http.Server;
 }
 
@@ -60,6 +62,8 @@ export interface CryoWebsocketServer {
 
 export declare class CryoWebsocketServer extends EventEmitter implements CryoWebsocketServer {
     public Destroy(): void;
+
+    public RegisterExtension(extension: CryoExtension): void;
 }
 
 /**

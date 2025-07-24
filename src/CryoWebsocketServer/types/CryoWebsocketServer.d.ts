@@ -1,4 +1,4 @@
-import {CryoServerWebsocketSession} from "../CryoWebsocketSession/CryoServerWebsocketSession.js";
+import {CryoServerWebsocketSession} from "../../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 
 export type CryoWebsocketServerOptions = {
     keepAliveIntervalMs?: number;

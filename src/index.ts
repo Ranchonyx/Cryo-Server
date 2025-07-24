@@ -8,5 +8,5 @@ import {CryoWebsocketServer} from "./CryoWebsocketServer/CryoWebsocketServer.js"
  * @param options - Optional arguments, {@link CryoWebsocketServerOptions}
  * */
 export async function cryo(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions) {
-    return CryoWebsocketServer.AttachToApp(pTokenValidator, options);
+    return CryoWebsocketServer.Create(pTokenValidator, options);
 }

@@ -11,6 +11,7 @@ import {UUID} from "node:crypto";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 import {AckTracker} from "../Common/AckTracker/AckTracker.js";
 import {CryoFrameInspector} from "../Common/CryoFrameInspector/CryoFrameInspector.js";
+import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
 
 type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
 
@@ -31,7 +32,6 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     private readonly error_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("error");
     private readonly utf8_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("utf8data");
     private readonly binary_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("binarydata");
-
 
     public constructor(private authToken: string, private remoteClient: ws & SocketType, private remoteSocket: Duplex, private initialMessage: http.IncomingMessage, private remoteName: string) {
         super();
@@ -61,14 +61,19 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * */
     public async SendUTF8(message: string): Promise<void> {
         const new_ack_id = this.current_ack++;
+        const boxed_message = {value: message};
+
+        await CryoExtensionRegistry
+            .get_executor(this)
+            .apply_before_send(boxed_message);
 
         const encodedUtf8DataMessage = this.utf8_formatter
-            .Serialize(this.Client.sessionId, new_ack_id, message);
+            .Serialize(this.Client.sessionId, new_ack_id, boxed_message.value);
 
         this.client_ack_tracker.Track(new_ack_id, {
             message: encodedUtf8DataMessage,
             timestamp: Date.now(),
-            payload: message
+            payload: boxed_message.value
         });
 
         await this.Send(encodedUtf8DataMessage);
@@ -79,14 +84,19 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * */
     public async SendBinary(message: Buffer): Promise<void> {
         const new_ack_id = this.current_ack++;
+        const boxed_message = {value: message};
+
+        await CryoExtensionRegistry
+            .get_executor(this)
+            .apply_before_send(boxed_message);
 
         const encodedBinaryDataMessage = this.binary_formatter
-            .Serialize(this.Client.sessionId, new_ack_id, message);
+            .Serialize(this.Client.sessionId, new_ack_id, boxed_message.value);
 
         this.client_ack_tracker.Track(new_ack_id, {
             message: encodedBinaryDataMessage,
             timestamp: Date.now(),
-            payload: message
+            payload: boxed_message.value
         });
 
         await this.Send(encodedBinaryDataMessage);
@@ -146,7 +156,13 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
 
         await this.Send(encodedACKMessage);
 
-        this.emit("message-utf8", decodedDataMessage.payload);
+        const boxed_message = {value: decodedDataMessage.payload};
+        const should_emit = await CryoExtensionRegistry
+            .get_executor(this)
+            .apply_after_receive(boxed_message);
+
+        if(should_emit)
+            this.emit("message-utf8", boxed_message.value);
     }
 
     /*
@@ -162,7 +178,13 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
 
         await this.Send(encodedACKMessage);
 
-        this.emit("message-binary", decodedDataMessage.payload);
+        const boxed_message = {value: decodedDataMessage.payload};
+        const should_emit = await CryoExtensionRegistry
+            .get_executor(this)
+            .apply_after_receive(boxed_message);
+
+        if(should_emit)
+            this.emit("message-binary", decodedDataMessage.payload);
     }
 
     /*

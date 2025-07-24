@@ -12,6 +12,8 @@ import {CryoWebsocketServerEvents, CryoWebsocketServerOptions} from "./types/Cry
 import Guard from "../Common/Util/Guard.js";
 import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
+import {CryoExtension} from "../CryoExtension/CryoExtension.js";
+import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
 
 type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
 
@@ -27,7 +29,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     private sessions: Array<CryoServerWebsocketSession> = [];
     private readonly log: DebugLoggerFunction;
 
-    public static async AttachToApp(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions) {
+    public static async Create(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions) {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
 
@@ -179,5 +181,9 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
 
     public get websocket_server() {
         return this.ws_server;
+    }
+
+    public RegisterExtension(extension: CryoExtension): void {
+        CryoExtensionRegistry.register(extension);
     }
 }
