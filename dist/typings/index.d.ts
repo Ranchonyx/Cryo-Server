@@ -1,6 +1,7 @@
 import {EventEmitter} from "node:events";
 import {UUID} from "node:crypto";
 import {Store} from "express-session";
+import http from "node:http";
 
 /**
  * CryoServerWebsocketSession typings
@@ -30,6 +31,7 @@ export declare class CryoServerWebsocketSession extends EventEmitter implements 
     public async SendBinary(message: Buffer): Promise<void>
 
     public Destroy(): void;
+    public get http_server(): http.Server;
 }
 
 /**

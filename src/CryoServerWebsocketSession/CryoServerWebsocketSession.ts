@@ -26,6 +26,13 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
 
     private readonly log: DebugLoggerFunction;
 
+    private readonly ping_pong_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("ping_pong");
+    private readonly ack_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("ack");
+    private readonly error_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("error");
+    private readonly utf8_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("utf8data");
+    private readonly binary_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("binarydata");
+
+
     public constructor(private authToken: string, private remoteClient: ws & SocketType, private remoteSocket: Duplex, private initialMessage: http.IncomingMessage, private remoteName: string) {
         super();
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
@@ -43,8 +50,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     public async Ping(): Promise<void> {
         const new_ack_id = this.current_ack++;
 
-        const encodedPingMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("ping_pong")
+        const encodedPingMessage = this.ping_pong_formatter
             .Serialize(this.Client.sessionId, new_ack_id, "ping");
 
         await this.Send(encodedPingMessage);
@@ -56,8 +62,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     public async SendUTF8(message: string): Promise<void> {
         const new_ack_id = this.current_ack++;
 
-        const encodedUtf8DataMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("utf8data")
+        const encodedUtf8DataMessage = this.utf8_formatter
             .Serialize(this.Client.sessionId, new_ack_id, message);
 
         this.client_ack_tracker.Track(new_ack_id, {
@@ -75,8 +80,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     public async SendBinary(message: Buffer): Promise<void> {
         const new_ack_id = this.current_ack++;
 
-        const encodedBinaryDataMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("binarydata")
+        const encodedBinaryDataMessage = this.binary_formatter
             .Serialize(this.Client.sessionId, new_ack_id, message);
 
         this.client_ack_tracker.Track(new_ack_id, {
@@ -92,8 +96,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * Respond to PONG frames and set the client to be alive
     * */
     private async HandlePingPongMessage(message: Buffer): Promise<void> {
-        const decodedPingPongMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("ping_pong")
+        const decodedPingPongMessage = this.ping_pong_formatter
             .Deserialize(message);
 
         if (decodedPingPongMessage.payload !== "pong")
@@ -106,8 +109,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * Handling of binary error messages from the client, currently just log it
     * */
     private async HandleErrorMessage(message: Buffer): Promise<void> {
-        const decodedErrorMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("error")
+        const decodedErrorMessage = this.error_formatter
             .Deserialize(message);
 
         this.log(decodedErrorMessage.payload);
@@ -117,8 +119,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * Handle ACK messages from the client
     * */
     private async HandleAckMessage(message: Buffer): Promise<void> {
-        const decodedAckMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("ack")
+        const decodedAckMessage = this.ack_formatter
             .Deserialize(message);
 
         const ack_id = decodedAckMessage.ack;
@@ -136,13 +137,11 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * Handle DATA messages from the client
     * */
     private async HandleUTF8DataMessage(message: Buffer): Promise<void> {
-        const decodedDataMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("utf8data")
+        const decodedDataMessage = this.utf8_formatter
             .Deserialize(message);
 
         const ack_id = decodedDataMessage.ack;
-        const encodedACKMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("ack")
+        const encodedACKMessage = this.ack_formatter
             .Serialize(this.Client.sessionId, ack_id);
 
         await this.Send(encodedACKMessage);
@@ -154,13 +153,11 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * Handle DATA messages from the client
     * */
     private async HandleBinaryDataMessage(message: Buffer): Promise<void> {
-        const decodedDataMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("binarydata")
+        const decodedDataMessage = this.binary_formatter
             .Deserialize(message);
 
         const ack_id = decodedDataMessage.ack;
-        const encodedACKMessage = CryoBinaryMessageFormatterFactory
-            .GetFormatter("ack")
+        const encodedACKMessage = this.ack_formatter
             .Serialize(this.Client.sessionId, ack_id);
 
         await this.Send(encodedACKMessage);
@@ -240,12 +237,6 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     public get Client(): ws & SocketType {
         return this.remoteClient;
     }
-
-    /*
-        public get InitialRequest(): http.IncomingMessage {
-            return this.initialMessage;
-        }
-    */
 
     public Destroy() {
         this.Client.close(1000, "Closing session.");

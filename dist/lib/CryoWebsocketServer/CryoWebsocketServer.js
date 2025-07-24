@@ -8,13 +8,10 @@ import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 export class CryoWebsocketServer extends EventEmitter {
     server;
     tokenValidator;
-    wsServer;
+    ws_server;
     WebsocketHearbeatInterval;
     sessions = [];
     log;
-    /*
-    * Attach a CryoWebsocketServer to an express.JS app
-    * */
     static async AttachToApp(pTokenValidator, options) {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
@@ -26,7 +23,7 @@ export class CryoWebsocketServer extends EventEmitter {
         this.server = server;
         this.tokenValidator = tokenValidator;
         this.log = CreateDebugLogger("CRYO_SERVER");
-        this.wsServer = new WebSocketServer({ noServer: true });
+        this.ws_server = new WebSocketServer({ noServer: true });
         this.WebsocketHearbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
             .ref();
         this.server.on("upgrade", this.HTTPUpgradeCallback.bind(this));
@@ -48,10 +45,6 @@ export class CryoWebsocketServer extends EventEmitter {
         const full_host_url = new URL(`ws://${process.env.HOST ?? 'localhost'}${request.url}`);
         const authorization = full_host_url.searchParams.get("authorization");
         const x_cryo_sid = full_host_url.searchParams.get("x-cryo-sid");
-        /*
-                const authorization = request.headers.authorization;
-                const x_cryo_sid = request.headers["x-cryo-sid"];
-        */
         //Check auth header
         if (!authorization) {
             this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No authorization header.`);
@@ -73,12 +66,12 @@ export class CryoWebsocketServer extends EventEmitter {
         //Authenticate the extracted bearer token to the supplied "tokenValidator" function
         const isTokenValid = await this.tokenValidator.validate(clientBearerToken);
         if (!isTokenValid) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. Invalid bearer token in header.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. Invalid bearer token in authorization query.`);
             return;
         }
         this.log(`Upgrade request from ${socketFmt} was accepted.`);
         //Let the ws server handle the upgrade...
-        this.wsServer.handleUpgrade(request, socket, head, (client, request) => {
+        this.ws_server.handleUpgrade(request, socket, head, (client, request) => {
             this.log(`Internal WS server completed upgrade for ${socketFmt}.`);
             //Call our callback once it's done
             this.WSUpgradeCallback.call(this, request, socket, client, clientBearerToken, clientSessionId);
@@ -91,9 +84,6 @@ export class CryoWebsocketServer extends EventEmitter {
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         client.isAlive = true;
         client.sessionId = clientSid;
-        /*
-                await this.databaseAccessor.set(clientSid, "sid", clientSid);
-        */
         const session = new CryoServerWebsocketSession(token, client, socket, request, socketFmt);
         this.sessions.push(session);
         this.emit("session", session);
@@ -113,9 +103,9 @@ export class CryoWebsocketServer extends EventEmitter {
         }
     }
     GetValidClients() {
-        if (!this.wsServer.clients)
+        if (!this.ws_server.clients)
             return [];
-        if (this.wsServer.clients.size === 0)
+        if (this.ws_server.clients.size === 0)
             return [];
         return this.sessions;
     }
@@ -129,10 +119,13 @@ export class CryoWebsocketServer extends EventEmitter {
         clearInterval(this.WebsocketHearbeatInterval);
         for (const session of this.GetValidClients())
             session.Destroy();
-        this.wsServer.removeAllListeners();
-        this.wsServer.close();
+        this.ws_server.removeAllListeners();
+        this.ws_server.close();
     }
-    get socketServer() {
-        return this.wsServer;
+    get http_server() {
+        return this.server;
+    }
+    get websocket_server() {
+        return this.ws_server;
     }
 }

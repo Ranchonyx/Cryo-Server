@@ -22,14 +22,11 @@ export interface CryoWebsocketServer {
 }
 
 export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketServer {
-    private readonly wsServer: WebSocketServer;
+    private readonly ws_server: WebSocketServer;
     private readonly WebsocketHearbeatInterval: NodeJS.Timeout;
     private sessions: Array<CryoServerWebsocketSession> = [];
     private readonly log: DebugLoggerFunction;
 
-    /*
-    * Attach a CryoWebsocketServer to an express.JS app
-    * */
     public static async AttachToApp(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions) {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
@@ -43,7 +40,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         super();
         this.log = CreateDebugLogger("CRYO_SERVER");
 
-        this.wsServer = new WebSocketServer({noServer: true});
+        this.ws_server = new WebSocketServer({noServer: true});
         this.WebsocketHearbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
             .ref();
 
@@ -72,11 +69,6 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         const authorization = full_host_url.searchParams.get("authorization");
         const x_cryo_sid = full_host_url.searchParams.get("x-cryo-sid");
 
-        /*
-                const authorization = request.headers.authorization;
-                const x_cryo_sid = request.headers["x-cryo-sid"];
-        */
-
         //Check auth header
         if (!authorization) {
             this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No authorization header.`);
@@ -104,14 +96,14 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         const isTokenValid = await this.tokenValidator.validate(clientBearerToken);
 
         if (!isTokenValid) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. Invalid bearer token in header.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. Invalid bearer token in authorization query.`);
             return;
         }
 
         this.log(`Upgrade request from ${socketFmt} was accepted.`);
 
         //Let the ws server handle the upgrade...
-        this.wsServer.handleUpgrade(request, socket, head, (client, request) => {
+        this.ws_server.handleUpgrade(request, socket, head, (client, request) => {
             this.log(`Internal WS server completed upgrade for ${socketFmt}.`);
 
             //Call our callback once it's done
@@ -127,10 +119,6 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
 
         client.isAlive = true;
         client.sessionId = clientSid;
-
-        /*
-                await this.databaseAccessor.set(clientSid, "sid", clientSid);
-        */
 
         const session = new CryoServerWebsocketSession(token, client, socket, request, socketFmt);
 
@@ -159,10 +147,10 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     }
 
     private GetValidClients(): Array<CryoServerWebsocketSession> {
-        if (!this.wsServer.clients)
+        if (!this.ws_server.clients)
             return [];
 
-        if (this.wsServer.clients.size === 0)
+        if (this.ws_server.clients.size === 0)
             return [];
 
         return this.sessions;
@@ -181,11 +169,15 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         for (const session of this.GetValidClients())
             session.Destroy();
 
-        this.wsServer.removeAllListeners();
-        this.wsServer.close();
+        this.ws_server.removeAllListeners();
+        this.ws_server.close();
     }
 
-    public get socketServer() {
-        return this.wsServer;
+    public get http_server() {
+        return this.server;
+    }
+
+    public get websocket_server() {
+        return this.ws_server;
     }
 }
