@@ -5,5 +5,5 @@ import { CryoWebsocketServer } from "./CryoWebsocketServer/CryoWebsocketServer.j
  * @param options - Optional arguments, {@link CryoWebsocketServerOptions}
  * */
 export async function cryo(pTokenValidator, options) {
-    return CryoWebsocketServer.AttachToApp(pTokenValidator, options);
+    return CryoWebsocketServer.Create(pTokenValidator, options);
 }

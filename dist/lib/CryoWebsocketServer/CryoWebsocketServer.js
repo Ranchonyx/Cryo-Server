@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import Guard from "../Common/Util/Guard.js";
 import { CryoServerWebsocketSession } from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
+import { CryoExtensionRegistry } from "../CryoExtension/CryoExtensionRegistry.js";
 export class CryoWebsocketServer extends EventEmitter {
     server;
     tokenValidator;
@@ -12,7 +13,7 @@ export class CryoWebsocketServer extends EventEmitter {
     WebsocketHearbeatInterval;
     sessions = [];
     log;
-    static async AttachToApp(pTokenValidator, options) {
+    static async Create(pTokenValidator, options) {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
         const server = http.createServer();
@@ -127,5 +128,8 @@ export class CryoWebsocketServer extends EventEmitter {
     }
     get websocket_server() {
         return this.ws_server;
+    }
+    RegisterExtension(extension) {
+        CryoExtensionRegistry.register(extension);
     }
 }

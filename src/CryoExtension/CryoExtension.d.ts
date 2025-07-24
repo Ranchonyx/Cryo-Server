@@ -1,6 +1,5 @@
 import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 
-
 export interface CryoExtension {
 
     /**
