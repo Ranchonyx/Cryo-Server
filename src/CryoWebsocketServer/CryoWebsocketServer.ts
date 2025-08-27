@@ -8,12 +8,17 @@ import {Duplex} from "node:stream";
 import {EventEmitter} from "node:events";
 import {DebugLoggerFunction} from "node:util";
 import {ITokenValidator} from "./types/ITokenValidator.js";
-import {CryoWebsocketServerEvents, CryoWebsocketServerOptions} from "./types/CryoWebsocketServer.js";
+import {
+    CryoWebsocketServerEvents,
+    CryoWebsocketServerOptions,
+    FilledBackpressureOpts
+} from "./types/CryoWebsocketServer.js";
 import Guard from "../Common/Util/Guard.js";
 import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 import {CryoExtension} from "../CryoExtension/CryoExtension.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
+import {OverwriteUnset} from "../Common/Util/OverwriteUnset.js";
 
 type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
 
@@ -35,10 +40,19 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
 
         const server = http.createServer();
 
-        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort);
+        const backpressure = options && options.backpressure || {};
+        const bpres_opts_filled: FilledBackpressureOpts = OverwriteUnset(backpressure, {
+            dropPolicy: "drop-oldest",
+            highWaterMark: 4 * 1024 * 1024,
+            lowWaterMark: 1 * 1024 * 1024,
+            maxQueuedBytes: 8 * 1024 * 1024,
+            maxQueueCount: 1024,
+        });
+
+        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled);
     }
 
-    private constructor(private server: http.Server | https.Server, private tokenValidator: ITokenValidator, keepAliveInterval: number, socketPort: number) {
+    private constructor(private server: http.Server | https.Server, private tokenValidator: ITokenValidator, keepAliveInterval: number, socketPort: number, private backpressure_options: FilledBackpressureOpts) {
         super();
         this.log = CreateDebugLogger("CRYO_SERVER");
 
@@ -122,7 +136,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         client.isAlive = true;
         client.sessionId = clientSid;
 
-        const session = new CryoServerWebsocketSession(token, client, socket, request, socketFmt);
+        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options);
 
         this.sessions.push(session);
 

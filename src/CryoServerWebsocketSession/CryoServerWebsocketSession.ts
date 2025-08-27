@@ -2,7 +2,6 @@ import {EventEmitter} from "node:events";
 import {DebugLoggerFunction} from "node:util";
 import ws from "ws";
 import {Duplex} from "node:stream";
-import http from "node:http";
 import {ICryoServerWebsocketSessionEvents} from "./types/CryoWebsocketSession.js";
 import CryoBinaryMessageFormatterFactory, {
     BinaryMessageType
@@ -12,6 +11,9 @@ import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 import {AckTracker} from "../Common/AckTracker/AckTracker.js";
 import {CryoFrameInspector} from "../Common/CryoFrameInspector/CryoFrameInspector.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
+import {FilledBackpressureOpts} from "../CryoWebsocketServer/types/CryoWebsocketServer.js";
+import {BackpressureManager} from "../Common/BackpressureManager/BackpressureManager.js";
+import Guard from "../Common/Util/Guard.js";
 
 type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
 
@@ -23,6 +25,7 @@ export interface CryoServerWebsocketSession {
 
 export class CryoServerWebsocketSession extends EventEmitter implements CryoServerWebsocketSession {
     private client_ack_tracker: AckTracker = new AckTracker();
+    private bp_mgr: BackpressureManager | null = null;
     private current_ack = 0;
 
     private readonly log: DebugLoggerFunction;
@@ -33,9 +36,11 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     private readonly utf8_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("utf8data");
     private readonly binary_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("binarydata");
 
-    public constructor(private authToken: string, private remoteClient: ws & SocketType, private remoteSocket: Duplex, private initialMessage: http.IncomingMessage, private remoteName: string) {
+    public constructor(private remoteClient: ws & SocketType, private remoteSocket: Duplex, private remoteName: string, private backpressure_opts: FilledBackpressureOpts) {
         super();
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
+
+        this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy);
 
         remoteSocket.once("end", this.HandleRemoteHangup.bind(this));
 
@@ -44,11 +49,18 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         remoteClient.on("message", this.HandleIncomingMessage.bind(this));
     }
 
+    private inc_get_ack(): number {
+        if (this.current_ack + 1 > (2 ** 32 - 1))
+            this.current_ack = 0;
+
+        return this.current_ack++;
+    }
+
     /*
     * Sends a PING frame to the client
     * */
     public async Ping(): Promise<void> {
-        const new_ack_id = this.current_ack++;
+        const new_ack_id = this.inc_get_ack();
 
         const encodedPingMessage = this.ping_pong_formatter
             .Serialize(this.Client.sessionId, new_ack_id, "ping");
@@ -60,7 +72,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * Send an UTF8 string to the client
     * */
     public async SendUTF8(message: string): Promise<void> {
-        const new_ack_id = this.current_ack++;
+        const new_ack_id = this.inc_get_ack();
         const boxed_message = {value: message};
 
         await CryoExtensionRegistry
@@ -83,7 +95,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * Send a binary message to the client
     * */
     public async SendBinary(message: Buffer): Promise<void> {
-        const new_ack_id = this.current_ack++;
+        const new_ack_id = this.inc_get_ack();
         const boxed_message = {value: message};
 
         await CryoExtensionRegistry
@@ -161,7 +173,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             .get_executor(this)
             .apply_after_receive(boxed_message);
 
-        if(should_emit)
+        if (should_emit)
             this.emit("message-utf8", boxed_message.value);
     }
 
@@ -183,8 +195,8 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             .get_executor(this)
             .apply_after_receive(boxed_message);
 
-        if(should_emit)
-            this.emit("message-binary", decodedDataMessage.payload);
+        if (should_emit)
+            this.emit("message-binary", boxed_message.value);
     }
 
     /*
@@ -243,17 +255,19 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             return;
         }
 
+        const type = CryoBinaryMessageFormatterFactory.GetType(encodedMessage);
+        const prio: "control" | "data" = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
         this.log(`Sent ${CryoFrameInspector.Inspect(encodedMessage)} to client.`)
 
-        return new Promise<void>((resolve, reject) => {
-            this.remoteClient.send(encodedMessage, {binary: true}, (err ?: Error) => {
-                    if (err)
-                        reject(err);
+        Guard.AgainstNullish(this.bp_mgr);
 
-                    resolve();
-                }
-            );
-        })
+        return new Promise<void>((resolve) => {
+            const result = this.bp_mgr!.enqueue(encodedMessage, prio);
+            if(!result)
+                this.log(`Frame ${CryoBinaryMessageFormatterFactory.GetAck(encodedMessage)} was dropped by policy.`);
+
+            resolve();
+        });
     }
 
     public get Client(): ws & SocketType {
@@ -261,6 +275,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     }
 
     public Destroy() {
+        this.bp_mgr?.Destroy();
         this.Client.close(1000, "Closing session.");
         this.emit("closed");
     }

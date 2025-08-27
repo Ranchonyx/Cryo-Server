@@ -6,9 +6,11 @@ import Guard from "../Common/Util/Guard.js";
 import { CryoServerWebsocketSession } from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 import { CryoExtensionRegistry } from "../CryoExtension/CryoExtensionRegistry.js";
+import { OverwriteUnset } from "../Common/Util/OverwriteUnset.js";
 export class CryoWebsocketServer extends EventEmitter {
     server;
     tokenValidator;
+    backpressure_options;
     ws_server;
     WebsocketHearbeatInterval;
     sessions = [];
@@ -17,12 +19,21 @@ export class CryoWebsocketServer extends EventEmitter {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
         const server = http.createServer();
-        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort);
+        const backpressure = options && options.backpressure || {};
+        const bpres_opts_filled = OverwriteUnset(backpressure, {
+            dropPolicy: "drop-oldest",
+            highWaterMark: 4 * 1024 * 1024,
+            lowWaterMark: 1 * 1024 * 1024,
+            maxQueuedBytes: 8 * 1024 * 1024,
+            maxQueueCount: 1024,
+        });
+        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled);
     }
-    constructor(server, tokenValidator, keepAliveInterval, socketPort) {
+    constructor(server, tokenValidator, keepAliveInterval, socketPort, backpressure_options) {
         super();
         this.server = server;
         this.tokenValidator = tokenValidator;
+        this.backpressure_options = backpressure_options;
         this.log = CreateDebugLogger("CRYO_SERVER");
         this.ws_server = new WebSocketServer({ noServer: true });
         this.WebsocketHearbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
@@ -85,7 +96,7 @@ export class CryoWebsocketServer extends EventEmitter {
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         client.isAlive = true;
         client.sessionId = clientSid;
-        const session = new CryoServerWebsocketSession(token, client, socket, request, socketFmt);
+        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options);
         this.sessions.push(session);
         this.emit("session", session);
     }
