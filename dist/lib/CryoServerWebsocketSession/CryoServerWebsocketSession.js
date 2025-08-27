@@ -212,6 +212,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     }
     Destroy() {
         this.bp_mgr?.Destroy();
+        this.client_ack_tracker.Destroy();
         this.Client.close(1000, "Closing session.");
         this.emit("closed");
     }

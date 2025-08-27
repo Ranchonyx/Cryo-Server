@@ -61,17 +61,17 @@ export class BackpressureManager {
                     return false;
                 }
             }
-            //Yeet the item if we are still exceeding the limit
-            if (this.drop === "dedupe-latest") {
-                const areWeStillExceeding = (this.queue.length + 1 > this.MAX_Q_COUNT) || (this.queued_bytes + buffer.byteLength > this.MAX_Q_BYTES);
-                if (areWeStillExceeding)
-                    return false;
-            }
-            this.queue.push({ buffer, priority, key, ts: Date.now() });
-            this.queued_bytes += buffer.byteLength;
-            //Try sending the queue right now
-            this.try_flush();
         }
+        //Yeet the item if we are still exceeding the limit
+        if (this.drop === "dedupe-latest") {
+            const areWeStillExceeding = (this.queue.length + 1 > this.MAX_Q_COUNT) || (this.queued_bytes + buffer.byteLength > this.MAX_Q_BYTES);
+            if (areWeStillExceeding)
+                return false;
+        }
+        this.queue.push({ buffer, priority, key, ts: Date.now() });
+        this.queued_bytes += buffer.byteLength;
+        //Try sending the queue right now
+        this.try_flush();
         return true;
     }
     try_flush() {
