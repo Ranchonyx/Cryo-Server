@@ -296,6 +296,10 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         return this.bytes_tx;
     }
 
+    public get id(): string {
+        return this.Client.sessionId;
+    }
+
     public Destroy() {
         this.bp_mgr?.Destroy();
         this.client_ack_tracker.Destroy();

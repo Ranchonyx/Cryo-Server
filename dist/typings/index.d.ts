@@ -35,6 +35,8 @@ export declare class CryoServerWebsocketSession extends EventEmitter implements 
     public SendBinary(message: Buffer): Promise<void>
 
     public Destroy(): void;
+
+    public get id(): string;
 }
 
 type Box<T> = { value: T };
