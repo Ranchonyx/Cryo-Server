@@ -7,27 +7,38 @@ export class BackpressureManager {
     MAX_Q_BYTES;
     MAX_Q_COUNT;
     drop;
+    log;
     on_drop;
     queue = [];
     queued_bytes = 0;
     tick = null;
-    constructor(ws, WM_HI, WM_LO, MAX_Q_BYTES, MAX_Q_COUNT, drop, on_drop) {
+    stat_log_tick = setInterval(() => this.log_stats(), 5000);
+    constructor(ws, WM_HI, WM_LO, MAX_Q_BYTES, MAX_Q_COUNT, drop, log, on_drop) {
         this.ws = ws;
         this.WM_HI = WM_HI;
         this.WM_LO = WM_LO;
         this.MAX_Q_BYTES = MAX_Q_BYTES;
         this.MAX_Q_COUNT = MAX_Q_COUNT;
         this.drop = drop;
+        this.log = log;
         this.on_drop = on_drop;
         Guard.CastAs(this.ws);
-        if (this.ws._socket) {
-            Guard.CastAssert(this.ws._socket, this.ws._socket !== undefined, "ws._socket was undefined!");
+        if (this.ws?._socket) {
+            // noinspection PointlessBooleanExpressionJS
+            Guard.CastAssert(this.ws._socket, this.ws?._socket !== undefined, "ws._socket was undefined!");
             this.ws?._socket?.on?.("drain", () => this.try_flush());
         }
-        this.tick = setInterval(() => this.try_flush(), 500);
+        this.tick = setInterval(() => this.try_flush(), 50);
+    }
+    log_stats() {
+        this.log(`Max queue elements: ${this.MAX_Q_COUNT}, Max queued bytes: ${this.MAX_Q_BYTES}, Drop policy: '${this.drop}'`);
+        this.log(`Queue length: ${this.queue.length}, Queued bytes: ${this.queued_bytes}, Current buffered bytes: ${this.ws.bufferedAmount}`);
     }
     can_send() {
-        return this.ws.readyState === this.ws.OPEN && this.ws.bufferedAmount < this.WM_HI;
+        Guard.CastAs(this.ws);
+        return this.ws.readyState === this.ws.OPEN &&
+            this.ws.bufferedAmount < this.WM_HI &&
+            this.ws._socket.writable;
     }
     enqueue(buffer, priority = "control", /*callback: (err?: Error) => void,*/ key) {
         //If we got ctrl traffic, try to bypass queue entirely, so long as we can send it now...
@@ -93,6 +104,9 @@ export class BackpressureManager {
     Destroy() {
         if (this.tick)
             clearInterval(this.tick);
+        if (this.stat_log_tick)
+            clearInterval(this.stat_log_tick);
+        this.stat_log_tick = null;
         this.tick = null;
         this.queue.length = 0;
         this.queued_bytes = 0;

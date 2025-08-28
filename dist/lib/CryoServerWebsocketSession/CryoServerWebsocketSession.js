@@ -14,6 +14,8 @@ export class CryoServerWebsocketSession extends EventEmitter {
     client_ack_tracker = new AckTracker();
     bp_mgr = null;
     current_ack = 0;
+    bytes_rx = 0;
+    bytes_tx = 0;
     log;
     ping_pong_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("ping_pong");
     ack_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("ack");
@@ -27,7 +29,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         this.remoteName = remoteName;
         this.backpressure_opts = backpressure_opts;
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
-        this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy);
+        this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy, CreateDebugLogger(`CRYO_BACKPRESSURE`));
         remoteSocket.once("end", this.HandleRemoteHangup.bind(this));
         remoteSocket.once("error", this.HandleRemoteError.bind(this));
         remoteClient.on("message", this.HandleIncomingMessage.bind(this));
@@ -49,6 +51,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     /*
     * Send an UTF8 string to the client
     * */
+    //noinspection JSUnusedGlobalSymbols
     async SendUTF8(message) {
         const new_ack_id = this.inc_get_ack();
         const boxed_message = { value: message };
@@ -67,6 +70,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     /*
     * Send a binary message to the client
     * */
+    //noinspection JSUnusedGlobalSymbols
     async SendBinary(message) {
         const new_ack_id = this.inc_get_ack();
         const boxed_message = { value: message };
@@ -154,6 +158,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     async HandleIncomingMessage(message) {
         const message_type = CryoBinaryMessageFormatterFactory.GetType(message);
         this.log(`Received ${CryoFrameInspector.Inspect(message)} from client.`);
+        this.bytes_rx += message.byteLength;
         switch (message_type) {
             case BinaryMessageType.PING_PONG:
                 await this.HandlePingPongMessage(message);
@@ -169,6 +174,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
                 return;
             case BinaryMessageType.BINARYDATA:
                 await this.HandleBinaryDataMessage(message);
+                return;
             default:
                 throw new Error(`Unsupported binary message type ${message_type}!`);
         }
@@ -192,10 +198,12 @@ export class CryoServerWebsocketSession extends EventEmitter {
     * Send a buffer to the client
     * */
     async Send(encodedMessage) {
-        if (!this.remoteSocket.writable && !this.remoteClient.writable) {
-            this.log("The socket being written to is not writable!");
-            return;
-        }
+        /*
+                if (!this.remoteSocket.writable && !this.remoteClient.writable) {
+                    this.log("The socket being written to is not writable!");
+                    return;
+                }
+        */
         const type = CryoBinaryMessageFormatterFactory.GetType(encodedMessage);
         const prio = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
         this.log(`Sent ${CryoFrameInspector.Inspect(encodedMessage)} to client.`);
@@ -204,11 +212,21 @@ export class CryoServerWebsocketSession extends EventEmitter {
             const result = this.bp_mgr.enqueue(encodedMessage, prio);
             if (!result)
                 this.log(`Frame ${CryoBinaryMessageFormatterFactory.GetAck(encodedMessage)} was dropped by policy.`);
+            this.bytes_tx += encodedMessage.byteLength;
             resolve();
         });
     }
     get Client() {
         return this.remoteClient;
+    }
+    get_ack_tracker() {
+        return this.client_ack_tracker;
+    }
+    get rx() {
+        return this.bytes_rx;
+    }
+    get tx() {
+        return this.bytes_tx;
     }
     Destroy() {
         this.bp_mgr?.Destroy();

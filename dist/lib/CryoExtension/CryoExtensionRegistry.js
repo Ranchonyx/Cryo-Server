@@ -42,6 +42,7 @@ class CryoExtensionExecutor {
         return should_emit_event;
     }
 }
+//noinspection JSUnusedGlobalSymbols
 export class CryoExtensionRegistry {
     static extensions = [];
     static get_executor(session) {

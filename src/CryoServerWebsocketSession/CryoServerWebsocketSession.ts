@@ -25,8 +25,11 @@ export interface CryoServerWebsocketSession {
 
 export class CryoServerWebsocketSession extends EventEmitter implements CryoServerWebsocketSession {
     private client_ack_tracker: AckTracker = new AckTracker();
-    private bp_mgr: BackpressureManager | null = null;
+    private readonly bp_mgr: BackpressureManager | null = null;
     private current_ack = 0;
+
+    private bytes_rx = 0;
+    private bytes_tx = 0;
 
     private readonly log: DebugLoggerFunction;
 
@@ -40,7 +43,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         super();
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
 
-        this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy);
+        this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy, CreateDebugLogger(`CRYO_BACKPRESSURE`));
 
         remoteSocket.once("end", this.HandleRemoteHangup.bind(this));
 
@@ -71,6 +74,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     /*
     * Send an UTF8 string to the client
     * */
+    //noinspection JSUnusedGlobalSymbols
     public async SendUTF8(message: string): Promise<void> {
         const new_ack_id = this.inc_get_ack();
         const boxed_message = {value: message};
@@ -94,6 +98,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     /*
     * Send a binary message to the client
     * */
+    //noinspection JSUnusedGlobalSymbols
     public async SendBinary(message: Buffer): Promise<void> {
         const new_ack_id = this.inc_get_ack();
         const boxed_message = {value: message};
@@ -205,6 +210,8 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     private async HandleIncomingMessage(message: Buffer): Promise<void> {
         const message_type = CryoBinaryMessageFormatterFactory.GetType(message);
         this.log(`Received ${CryoFrameInspector.Inspect(message)} from client.`);
+
+        this.bytes_rx += message.byteLength;
         switch (message_type) {
             case BinaryMessageType.PING_PONG:
                 await this.HandlePingPongMessage(message);
@@ -220,6 +227,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
                 return;
             case BinaryMessageType.BINARYDATA:
                 await this.HandleBinaryDataMessage(message);
+                return;
             default:
                 throw new Error(`Unsupported binary message type ${message_type}!`);
         }
@@ -250,11 +258,12 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * Send a buffer to the client
     * */
     private async Send(encodedMessage: Buffer) {
+/*
         if (!this.remoteSocket.writable && !this.remoteClient.writable) {
             this.log("The socket being written to is not writable!");
             return;
         }
-
+*/
         const type = CryoBinaryMessageFormatterFactory.GetType(encodedMessage);
         const prio: "control" | "data" = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
         this.log(`Sent ${CryoFrameInspector.Inspect(encodedMessage)} to client.`)
@@ -266,12 +275,25 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             if(!result)
                 this.log(`Frame ${CryoBinaryMessageFormatterFactory.GetAck(encodedMessage)} was dropped by policy.`);
 
+            this.bytes_tx += encodedMessage.byteLength;
             resolve();
         });
     }
 
     public get Client(): ws & SocketType {
         return this.remoteClient;
+    }
+
+    public get_ack_tracker(): AckTracker {
+        return this.client_ack_tracker;
+    }
+
+    public get rx(): number {
+        return this.bytes_rx;
+    }
+
+    public get tx(): number {
+        return this.bytes_tx;
     }
 
     public Destroy() {

@@ -9,6 +9,10 @@ import http from "node:http";
 export declare interface ICryoServerWebsocketSessionEvents {
     "message-utf8": (message: string) => Promise<void>;
     "message-binary": (message: Buffer) => Promise<void>;
+    "stat-rtt": (stat: number) => Promise<void>;
+    "stat-ack-timeout": (stat: number) => Promise<void>;
+    "stat-bytes-rx": (stat: number) => Promise<void>;
+    "stat-bytes-tx": (stat: number) => Promise<void>;
 
     "closed": () => void;
 }
@@ -78,9 +82,19 @@ export declare interface ITokenValidator {
     validate(token: string): Promise<boolean>;
 }
 
-export declare type CryoWebsocketServerOptions = {
+type DropPolicy = "drop-oldest" | "drop-newest" | "dedupe-latest";
+export interface BackpressureOpts {
+    highWaterMark?: number;
+    lowWaterMark?: number;
+    maxQueuedBytes?: number;
+    maxQueueCount?: number;
+    dropPolicy?: DropPolicy;
+}
+
+export interface CryoWebsocketServerOptions {
     keepAliveIntervalMs?: number;
     port?: number;
+    backpressure?: BackpressureOpts;
 }
 
 export declare interface CryoWebsocketServerEvents {

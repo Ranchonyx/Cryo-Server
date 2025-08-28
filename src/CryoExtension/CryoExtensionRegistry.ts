@@ -52,6 +52,7 @@ class CryoExtensionExecutor {
     }
 }
 
+//noinspection JSUnusedGlobalSymbols
 export class CryoExtensionRegistry {
     public static extensions: CryoExtension[] = [];
 

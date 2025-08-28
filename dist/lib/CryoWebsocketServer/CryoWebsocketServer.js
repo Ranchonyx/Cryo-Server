@@ -2,9 +2,9 @@ import http from "node:http";
 import { WebSocketServer } from "ws";
 import { clearInterval, setInterval } from "node:timers";
 import { EventEmitter } from "node:events";
+import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 import Guard from "../Common/Util/Guard.js";
 import { CryoServerWebsocketSession } from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
-import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 import { CryoExtensionRegistry } from "../CryoExtension/CryoExtensionRegistry.js";
 import { OverwriteUnset } from "../Common/Util/OverwriteUnset.js";
 export class CryoWebsocketServer extends EventEmitter {
@@ -23,9 +23,9 @@ export class CryoWebsocketServer extends EventEmitter {
         const bpres_opts_filled = OverwriteUnset(backpressure, {
             dropPolicy: "drop-oldest",
             highWaterMark: 4 * 1024 * 1024,
-            lowWaterMark: 1 * 1024 * 1024,
+            lowWaterMark: 1024 * 1024,
             maxQueuedBytes: 8 * 1024 * 1024,
-            maxQueueCount: 1024,
+            maxQueueCount: 1024
         });
         return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled);
     }
@@ -86,10 +86,10 @@ export class CryoWebsocketServer extends EventEmitter {
         this.ws_server.handleUpgrade(request, socket, head, (client, request) => {
             this.log(`Internal WS server completed upgrade for ${socketFmt}.`);
             //Call our callback once it's done
-            this.WSUpgradeCallback.call(this, request, socket, client, clientBearerToken, clientSessionId);
+            this.WSUpgradeCallback(request, socket, client, clientSessionId);
         });
     }
-    async WSUpgradeCallback(request, socket, client, token, clientSid) {
+    async WSUpgradeCallback(request, socket, client, clientSid) {
         //Assert that the socket has an "isAlive" property and if so, cast the "Client" as having this property
         //Additionally, add a "sessionId" property containing a UUIDv4
         Guard.CastAs(client);
@@ -100,8 +100,11 @@ export class CryoWebsocketServer extends EventEmitter {
         this.sessions.push(session);
         this.emit("session", session);
     }
+    /*
+    * Take care of pinging the clients, removing them if they are not responding anymore and doing per session stat & housekeeping
+    * */
     async Heartbeat() {
-        for (const session of this.GetValidClients()) {
+        for (const session of this.sessions) {
             //Assert that the socket has an "isAlive" property and if so, cast the "Client" as having this property
             if (!session.Client.isAlive) {
                 this.log(`Terminating dead client session ${session.Client.sessionId}`);
@@ -110,36 +113,43 @@ export class CryoWebsocketServer extends EventEmitter {
                 retrievedSession.Destroy();
                 return;
             }
+            //Also to housekeeping in the ACK tracker of each client
+            const session_tracker = session.get_ack_tracker();
+            session.emit("stat-ack-timeout", session_tracker.Sweep());
+            session.emit("stat-rtt", session_tracker.rtt);
+            session.emit("stat-bytes-tx", session.tx);
+            session.emit("stat-bytes-rx", session.rx);
             session.Client.isAlive = false;
             await session.Ping();
         }
     }
-    GetValidClients() {
-        if (!this.ws_server.clients)
-            return [];
-        if (this.ws_server.clients.size === 0)
-            return [];
-        return this.sessions;
-    }
-    /*
-    * Teardown this server and all sessions, terminate all connections
-    * */
+    /*    private GetValidClients(): Array<CryoServerWebsocketSession> {
+            if (!this.ws_server.clients)
+                return [];
+
+            if (this.ws_server.clients.size === 0)
+                return [];
+
+            return this.sessions;
+        }*/
+    /**
+     * Teardown this server and all sessions, terminate all connections
+     */
+    //noinspection JSUnusedGlobalSymbols
     Destroy() {
         this.server.removeAllListeners();
         this.server.close();
         this.WebsocketHearbeatInterval.unref();
         clearInterval(this.WebsocketHearbeatInterval);
-        for (const session of this.GetValidClients())
+        for (const session of this.sessions)
             session.Destroy();
         this.ws_server.removeAllListeners();
         this.ws_server.close();
     }
-    get http_server() {
-        return this.server;
-    }
-    get websocket_server() {
-        return this.ws_server;
-    }
+    /**
+     * Register a server-side cryo extension
+     */
+    //noinspection JSUnusedGlobalSymbols
     RegisterExtension(extension) {
         CryoExtensionRegistry.register(extension);
     }

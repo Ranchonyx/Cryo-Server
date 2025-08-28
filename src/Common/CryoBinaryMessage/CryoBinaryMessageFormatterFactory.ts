@@ -214,7 +214,7 @@ class ErrorMessageFormatter implements CryoBinaryMessageFormatter<ErrorMessage> 
         return msg_buf;
     }
 }
-
+//noinspection JSUnusedGlobalSymbols
 export default class CryoBinaryMessageFormatterFactory {
     public static GetFormatter(type: "utf8data"): UTF8DataMessageFormatter;
     public static GetFormatter(type: BinaryMessageType.UTF8DATA): UTF8DataMessageFormatter;

@@ -145,6 +145,7 @@ class ErrorMessageFormatter {
         return msg_buf;
     }
 }
+//noinspection JSUnusedGlobalSymbols
 export default class CryoBinaryMessageFormatterFactory {
     static GetFormatter(type) {
         switch (type) {
