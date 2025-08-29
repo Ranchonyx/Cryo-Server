@@ -91,6 +91,7 @@ export class BackpressureManager {
         this.queue.push({buffer, priority, key, ts: Date.now()});
         this.queued_bytes += buffer.byteLength;
 
+        this.log_stats();
         //Try sending the queue right now
         this.try_flush();
 

@@ -157,7 +157,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
                 const retrievedSession = this.sessions.splice(sIdx, 1)[0];
                 retrievedSession.Destroy();
 
-                return;
+                continue;
             }
 
             //Also to housekeeping in the ACK tracker of each client

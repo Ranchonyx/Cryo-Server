@@ -111,7 +111,7 @@ export class CryoWebsocketServer extends EventEmitter {
                 const sIdx = this.sessions.findIndex(s => s.Client.sessionId === session.Client.sessionId);
                 const retrievedSession = this.sessions.splice(sIdx, 1)[0];
                 retrievedSession.Destroy();
-                return;
+                continue;
             }
             //Also to housekeeping in the ACK tracker of each client
             const session_tracker = session.get_ack_tracker();
