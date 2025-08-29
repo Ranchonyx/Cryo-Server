@@ -19,13 +19,11 @@
     }
   },
   "dependencies": {
-    "node-cleanup": "^2.1.2",
     "ws": "^8.18.0"
   },
   "type": "module",
   "devDependencies": {
     "@types/node": "^22.4.1",
-    "@types/node-cleanup": "^2.1.5",
     "@types/ws": "^8.5.12"
   },
   "scripts": {

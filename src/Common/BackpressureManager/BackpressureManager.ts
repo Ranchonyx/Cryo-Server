@@ -51,7 +51,7 @@ export class BackpressureManager {
         }
 
         if (this.drop === "dedupe-latest" && key) {
-            for (let i = this.queue.length; i >= 0; i--) {
+            for (let i = this.queue.length - 1; i >= 0; i--) {
                 const item = this.queue[i];
                 if (item.key === key) {
                     this.queued_bytes -= item.buffer.byteLength;
