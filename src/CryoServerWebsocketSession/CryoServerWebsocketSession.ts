@@ -54,6 +54,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         remoteSocket.once("error", this.HandleRemoteError.bind(this));
 
         remoteClient.on("message", this.HandleIncomingMessage.bind(this));
+        this.init_crypto_handshake();
     }
 
     private inc_get_ack(): number {
