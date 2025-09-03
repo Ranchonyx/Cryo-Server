@@ -3,10 +3,9 @@ import {DebugLoggerFunction} from "node:util";
 import ws from "ws";
 import {Duplex} from "node:stream";
 import {ICryoServerWebsocketSessionEvents} from "./types/CryoWebsocketSession.js";
-import CryoBinaryMessageFormatterFactory, {
-    BinaryMessageType
-} from "../Common/CryoBinaryMessage/CryoBinaryMessageFormatterFactory.js";
-import {UUID} from "node:crypto";
+import CryoBinaryFrameFormatter from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
+import CryoFrameFormatter, {BinaryMessageType} from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
+import {createECDH, createHash, ECDH, UUID} from "node:crypto";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 import {AckTracker} from "../Common/AckTracker/AckTracker.js";
 import {CryoFrameInspector} from "../Common/CryoFrameInspector/CryoFrameInspector.js";
@@ -14,6 +13,7 @@ import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
 import {FilledBackpressureOpts} from "../CryoWebsocketServer/types/CryoWebsocketServer.js";
 import {BackpressureManager} from "../Common/BackpressureManager/BackpressureManager.js";
 import Guard from "../Common/Util/Guard.js";
+import {PerSessionCryptoHelper} from "../Common/CryptoHelper/CryptoHelper.js";
 
 type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
 
@@ -33,20 +33,24 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
 
     private readonly log: DebugLoggerFunction;
 
-    private readonly ping_pong_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("ping_pong");
-    private readonly ack_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("ack");
-    private readonly error_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("error");
-    private readonly utf8_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("utf8data");
-    private readonly binary_formatter = CryoBinaryMessageFormatterFactory.GetFormatter("binarydata");
+    private readonly ping_pong_formatter = CryoBinaryFrameFormatter.GetFormatter("ping_pong");
+    private readonly ack_formatter = CryoBinaryFrameFormatter.GetFormatter("ack");
+    private readonly error_formatter = CryoBinaryFrameFormatter.GetFormatter("error");
+    private readonly utf8_formatter = CryoBinaryFrameFormatter.GetFormatter("utf8data");
+    private readonly binary_formatter = CryoBinaryFrameFormatter.GetFormatter("binarydata");
+    
+    private readonly ecdh: ECDH = createECDH("prime256v1");
+    private send_key: Buffer | null = null;
+    private recv_key: Buffer | null = null;
+    private l_crypto: PerSessionCryptoHelper | null = null;
 
-    public constructor(private remoteClient: ws & SocketType, private remoteSocket: Duplex, private remoteName: string, private backpressure_opts: FilledBackpressureOpts) {
+    public constructor(private remoteClient: ws & SocketType, private remoteSocket: Duplex, private remoteName: string, backpressure_opts: FilledBackpressureOpts) {
         super();
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
 
         this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy, CreateDebugLogger(`CRYO_BACKPRESSURE`));
 
         remoteSocket.once("end", this.HandleRemoteHangup.bind(this));
-
         remoteSocket.once("error", this.HandleRemoteError.bind(this));
 
         remoteClient.on("message", this.HandleIncomingMessage.bind(this));
@@ -57,6 +61,18 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             this.current_ack = 0;
 
         return this.current_ack++;
+    }
+
+    private async init_crypto_handshake() {
+        this.ecdh.generateKeys();
+        const pub_key = this.ecdh.getPublicKey();
+
+        const frame = CryoFrameFormatter
+            .GetFormatter("kexchg")
+            .Serialize(this.Client.sessionId, this.inc_get_ack(), pub_key);
+
+        await this.Send(frame, false);
+        this.log("Sent server-to-client key exchange with public key.");
     }
 
     /*
@@ -74,6 +90,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     /*
     * Send an UTF8 string to the client
     * */
+
     //noinspection JSUnusedGlobalSymbols
     public async SendUTF8(message: string): Promise<void> {
         const new_ack_id = this.inc_get_ack();
@@ -98,6 +115,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     /*
     * Send a binary message to the client
     * */
+
     //noinspection JSUnusedGlobalSymbols
     public async SendBinary(message: Buffer): Promise<void> {
         const new_ack_id = this.inc_get_ack();
@@ -204,11 +222,36 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             this.emit("message-binary", boxed_message.value);
     }
 
+    private async HandleKeyExchangeMessage(message: Buffer): Promise<void> {
+        const decoded = CryoFrameFormatter
+            .GetFormatter("kexchg")
+            .Deserialize(message);
+
+        const client_pub_key = decoded.payload;
+        const secret = this.ecdh.computeSecret(client_pub_key);
+
+        //Make two aes128 hashes from the secret
+        const hash = createHash("sha256")
+            .update(secret)
+            .digest();
+
+        this.send_key = hash.subarray(0, 16);
+        this.recv_key = hash.subarray(16, 32);
+
+        const encodedACKMessage = this.ack_formatter
+            .Serialize(this.Client.sessionId, decoded.ack);
+        await this.Send(encodedACKMessage);
+
+        this.l_crypto = new PerSessionCryptoHelper(this.send_key, this.recv_key);
+    }
+
     /*
     * Handle all incoming messages
     * */
-    private async HandleIncomingMessage(message: Buffer): Promise<void> {
-        const message_type = CryoBinaryMessageFormatterFactory.GetType(message);
+    private async HandleIncomingMessage(incoming_message: Buffer): Promise<void> {
+        const message = this.secure ? this.l_crypto!.decrypt(incoming_message) : incoming_message;
+
+        const message_type = CryoBinaryFrameFormatter.GetType(message);
         this.log(`Received ${CryoFrameInspector.Inspect(message)} from client.`);
 
         this.bytes_rx += message.byteLength;
@@ -227,6 +270,9 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
                 return;
             case BinaryMessageType.BINARYDATA:
                 await this.HandleBinaryDataMessage(message);
+                return;
+            case BinaryMessageType.KEXCHG:
+                await this.HandleKeyExchangeMessage(message);
                 return;
             default:
                 throw new Error(`Unsupported binary message type ${message_type}!`);
@@ -253,27 +299,29 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         this.Destroy();
     }
 
-
     /*
     * Send a buffer to the client
     * */
-    private async Send(encodedMessage: Buffer) {
-/*
-        if (!this.remoteSocket.writable && !this.remoteClient.writable) {
-            this.log("The socket being written to is not writable!");
-            return;
-        }
-*/
-        const type = CryoBinaryMessageFormatterFactory.GetType(encodedMessage);
+    private async Send(encodedMessage: Buffer, encrypt: boolean = false): Promise<void> {
+        /*
+                if (!this.remoteSocket.writable && !this.remoteClient.writable) {
+                    this.log("The socket being written to is not writable!");
+                    return;
+                }
+        */
+        const type = CryoBinaryFrameFormatter.GetType(encodedMessage);
         const prio: "control" | "data" = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
-        this.log(`Sent ${CryoFrameInspector.Inspect(encodedMessage)} to client.`)
-
-        Guard.AgainstNullish(this.bp_mgr);
+        this.log(`Sent ${CryoFrameInspector.Inspect(encodedMessage)} to client.`);
 
         return new Promise<void>((resolve) => {
-            const result = this.bp_mgr!.enqueue(encodedMessage, prio);
-            if(!result)
-                this.log(`Frame ${CryoBinaryMessageFormatterFactory.GetAck(encodedMessage)} was dropped by policy.`);
+            Guard.AgainstNullish(this.bp_mgr);
+            Guard.AgainstNullish(this.l_crypto);
+
+            const outgoing_message = this.secure ? this.l_crypto.encrypt(encodedMessage) : encodedMessage;
+
+            const result = this.bp_mgr!.enqueue(outgoing_message, prio);
+            if (!result)
+                this.log(`Frame ${CryoBinaryFrameFormatter.GetAck(encodedMessage)} was dropped by policy.`);
 
             this.bytes_tx += encodedMessage.byteLength;
             resolve();
@@ -298,6 +346,10 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
 
     public get id(): string {
         return this.Client.sessionId;
+    }
+
+    public get secure(): boolean {
+        return this.l_crypto !== null;
     }
 
     public Destroy() {

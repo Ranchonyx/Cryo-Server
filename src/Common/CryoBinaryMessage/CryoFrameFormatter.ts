@@ -1,4 +1,4 @@
-import {UUID} from "node:crypto";
+import type {UUID} from "node:crypto";
 
 export enum BinaryMessageType {
     UTF8DATA,
@@ -257,8 +257,8 @@ export default class CryoBinaryMessageFormatterFactory {
 
     public static GetType(message: Buffer): BinaryMessageType {
         const type = message.readUint8(20);
-        if (type > BinaryMessageType.ERROR)
-            throw new Error(`Unable to decode type from message ${message}. MAX_TYPE = 3, got ${type} !`);
+        if (type > BinaryMessageType.BINARYDATA)
+            throw new Error(`Unable to decode type from message ${message}. MAX_TYPE = 4, got ${type} !`);
 
         return type;
     }
