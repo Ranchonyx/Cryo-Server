@@ -25,8 +25,6 @@ export class CryoServerWebsocketSession extends EventEmitter {
     utf8_formatter = CryoBinaryFrameFormatter.GetFormatter("utf8data");
     binary_formatter = CryoBinaryFrameFormatter.GetFormatter("binarydata");
     ecdh = createECDH("prime256v1");
-    send_key = null;
-    recv_key = null;
     l_crypto = null;
     constructor(remoteClient, remoteSocket, remoteName, backpressure_opts) {
         super();
@@ -177,12 +175,12 @@ export class CryoServerWebsocketSession extends EventEmitter {
         const hash = createHash("sha256")
             .update(secret)
             .digest();
-        this.send_key = hash.subarray(0, 16);
-        this.recv_key = hash.subarray(16, 32);
+        const send_key = hash.subarray(0, 16);
+        const recv_key = hash.subarray(16, 32);
         const encodedACKMessage = this.ack_formatter
             .Serialize(this.Client.sessionId, decoded.ack);
         await this.Send(encodedACKMessage);
-        this.l_crypto = new PerSessionCryptoHelper(this.send_key, this.recv_key);
+        this.l_crypto = new PerSessionCryptoHelper(send_key, recv_key);
     }
     /*
     * Handle all incoming messages

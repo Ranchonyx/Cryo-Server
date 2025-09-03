@@ -38,10 +38,8 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     private readonly error_formatter = CryoBinaryFrameFormatter.GetFormatter("error");
     private readonly utf8_formatter = CryoBinaryFrameFormatter.GetFormatter("utf8data");
     private readonly binary_formatter = CryoBinaryFrameFormatter.GetFormatter("binarydata");
-    
+
     private readonly ecdh: ECDH = createECDH("prime256v1");
-    private send_key: Buffer | null = null;
-    private recv_key: Buffer | null = null;
     private l_crypto: PerSessionCryptoHelper | null = null;
 
     public constructor(private remoteClient: ws & SocketType, private remoteSocket: Duplex, private remoteName: string, backpressure_opts: FilledBackpressureOpts) {
@@ -235,14 +233,14 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             .update(secret)
             .digest();
 
-        this.send_key = hash.subarray(0, 16);
-        this.recv_key = hash.subarray(16, 32);
+        const send_key = hash.subarray(0, 16);
+        const recv_key = hash.subarray(16, 32);
 
         const encodedACKMessage = this.ack_formatter
             .Serialize(this.Client.sessionId, decoded.ack);
         await this.Send(encodedACKMessage);
 
-        this.l_crypto = new PerSessionCryptoHelper(this.send_key, this.recv_key);
+        this.l_crypto = new PerSessionCryptoHelper(send_key, recv_key);
     }
 
     /*
@@ -311,8 +309,8 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         */
         const type = CryoBinaryFrameFormatter.GetType(encodedMessage);
         const prio: "control" | "data" = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
-        this.log(`Sent ${CryoFrameInspector.Inspect(encodedMessage)} to client.`);
 
+        this.log(`Sent ${CryoFrameInspector.Inspect(encodedMessage)} to client.`);
         return new Promise<void>((resolve) => {
             Guard.AgainstNullish(this.bp_mgr);
 
