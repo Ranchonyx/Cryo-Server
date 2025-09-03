@@ -12,7 +12,6 @@ import {CryoFrameInspector} from "../Common/CryoFrameInspector/CryoFrameInspecto
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
 import {FilledBackpressureOpts} from "../CryoWebsocketServer/types/CryoWebsocketServer.js";
 import {BackpressureManager} from "../Common/BackpressureManager/BackpressureManager.js";
-import Guard from "../Common/Util/Guard.js";
 import {PerSessionCryptoHelper} from "../Common/CryptoHelper/CryptoHelper.js";
 
 type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
@@ -21,6 +20,16 @@ export interface CryoServerWebsocketSession {
     on<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, listener: ICryoServerWebsocketSessionEvents[U]): this;
 
     emit<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, ...args: Parameters<ICryoServerWebsocketSessionEvents[U]>): boolean;
+}
+
+/*
+* Crypto state
+* */
+enum CryptoState {
+    INITIAL,          // Just accepted WebSocket, no keys yet
+    WAIT_CLIENT_KEX,  // Sent server pubkey, waiting for client pubkey
+    WAIT_SERVER_ACK,  // Derived keys, waiting for client ACK of our pubkey
+    SECURE            // Both sides acknowledged, channel encrypted
 }
 
 export class CryoServerWebsocketSession extends EventEmitter implements CryoServerWebsocketSession {
@@ -39,8 +48,10 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     private readonly utf8_formatter = CryoBinaryFrameFormatter.GetFormatter("utf8data");
     private readonly binary_formatter = CryoBinaryFrameFormatter.GetFormatter("binarydata");
 
+    private crypt_state: CryptoState = CryptoState.INITIAL;
     private readonly ecdh: ECDH = createECDH("prime256v1");
     private l_crypto: PerSessionCryptoHelper | null = null;
+    private server_kex_ack_id: number | null = null;
 
     public constructor(private remoteClient: ws & SocketType, private remoteSocket: Duplex, private remoteName: string, backpressure_opts: FilledBackpressureOpts) {
         super();
@@ -66,12 +77,18 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         this.ecdh.generateKeys();
         const pub_key = this.ecdh.getPublicKey(null, "uncompressed");
 
+        const ack_id = this.inc_get_ack();
+        this.server_kex_ack_id = ack_id;
+
         const frame = CryoFrameFormatter
             .GetFormatter("kexchg")
-            .Serialize(this.Client.sessionId, this.inc_get_ack(), pub_key);
+            .Serialize(this.Client.sessionId, ack_id, pub_key);
 
         await this.Send(frame);
-        this.log("Sent server-to-client key exchange with uncompressed public key.");    }
+        this.log("Sent server public key!");
+
+        this.crypt_state = CryptoState.WAIT_CLIENT_KEX;
+    }
 
     /*
     * Sends a PING frame to the client
@@ -166,6 +183,13 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             .Deserialize(message);
 
         const ack_id = decodedAckMessage.ack;
+        if(this.crypt_state === CryptoState.WAIT_SERVER_ACK && ack_id === this.server_kex_ack_id) {
+            this.crypt_state = CryptoState.SECURE;
+
+            this.log("Handshake complete, channel secured!");
+            return;
+        }
+
         const found_message = this.client_ack_tracker.Confirm(ack_id);
 
         if (!found_message) {
@@ -236,21 +260,38 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         const send_key = hash.subarray(0, 16);
         const recv_key = hash.subarray(16, 32);
 
+        this.l_crypto = new PerSessionCryptoHelper(send_key, recv_key);
+
         //ACK the clients KEX in plain
         const encodedACKMessage = this.ack_formatter
             .Serialize(this.Client.sessionId, decoded.ack);
         await this.Send(encodedACKMessage);
 
-        this.l_crypto = new PerSessionCryptoHelper(send_key, recv_key);
+        this.log("Got client pubkey and derived keys. Waiting for client ACK of our pubkey")
+        this.crypt_state = CryptoState.WAIT_SERVER_ACK;
     }
 
     /*
     * Handle all incoming messages
     * */
     private async HandleIncomingMessage(incoming_message: Buffer): Promise<void> {
-        const message = this.secure ? this.l_crypto!.decrypt(incoming_message) : incoming_message;
+        let message: Buffer;
+        let message_type: BinaryMessageType;
 
-        const message_type = CryoBinaryFrameFormatter.GetType(message);
+        if (this.crypt_state === CryptoState.INITIAL || this.crypt_state === CryptoState.WAIT_CLIENT_KEX) {
+            //Raw frame inspections
+            message_type = CryoBinaryFrameFormatter.GetType(incoming_message);
+
+            if (message_type !== BinaryMessageType.KEXCHG && message_type !== BinaryMessageType.ACK)
+                throw new Error(`Unexpected message type ${message_type} in handshake state ${this.crypt_state}`);
+            message = incoming_message;
+        } else {
+            //We're already secure, or rotating keys
+            const decrypted = this.l_crypto!.decrypt(incoming_message);
+            message_type = CryoBinaryFrameFormatter.GetType(decrypted);
+            message = decrypted;
+        }
+
         this.log(`Received ${CryoFrameInspector.Inspect(message)} from client.`);
 
         this.bytes_rx += message.byteLength;
@@ -314,7 +355,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         const outgoing_message = this.secure ? this.l_crypto!.encrypt(encodedMessage) : encodedMessage;
 
         const result = this.bp_mgr!.enqueue(outgoing_message, prio);
-        if(!result) {
+        if (!result) {
             this.log(`Frame ${CryoBinaryFrameFormatter.GetAck(encodedMessage)} was dropped by policy.`);
             return;
         }

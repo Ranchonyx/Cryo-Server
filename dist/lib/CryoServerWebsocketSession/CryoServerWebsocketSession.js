@@ -8,6 +8,16 @@ import { CryoFrameInspector } from "../Common/CryoFrameInspector/CryoFrameInspec
 import { CryoExtensionRegistry } from "../CryoExtension/CryoExtensionRegistry.js";
 import { BackpressureManager } from "../Common/BackpressureManager/BackpressureManager.js";
 import { PerSessionCryptoHelper } from "../Common/CryptoHelper/CryptoHelper.js";
+/*
+* Crypto state
+* */
+var CryptoState;
+(function (CryptoState) {
+    CryptoState[CryptoState["INITIAL"] = 0] = "INITIAL";
+    CryptoState[CryptoState["WAIT_CLIENT_KEX"] = 1] = "WAIT_CLIENT_KEX";
+    CryptoState[CryptoState["WAIT_SERVER_ACK"] = 2] = "WAIT_SERVER_ACK";
+    CryptoState[CryptoState["SECURE"] = 3] = "SECURE"; // Both sides acknowledged, channel encrypted
+})(CryptoState || (CryptoState = {}));
 export class CryoServerWebsocketSession extends EventEmitter {
     remoteClient;
     remoteSocket;
@@ -23,8 +33,10 @@ export class CryoServerWebsocketSession extends EventEmitter {
     error_formatter = CryoBinaryFrameFormatter.GetFormatter("error");
     utf8_formatter = CryoBinaryFrameFormatter.GetFormatter("utf8data");
     binary_formatter = CryoBinaryFrameFormatter.GetFormatter("binarydata");
+    crypt_state = CryptoState.INITIAL;
     ecdh = createECDH("prime256v1");
     l_crypto = null;
+    server_kex_ack_id = null;
     constructor(remoteClient, remoteSocket, remoteName, backpressure_opts) {
         super();
         this.remoteClient = remoteClient;
@@ -45,11 +57,14 @@ export class CryoServerWebsocketSession extends EventEmitter {
     async init_crypto_handshake() {
         this.ecdh.generateKeys();
         const pub_key = this.ecdh.getPublicKey(null, "uncompressed");
+        const ack_id = this.inc_get_ack();
+        this.server_kex_ack_id = ack_id;
         const frame = CryoFrameFormatter
             .GetFormatter("kexchg")
-            .Serialize(this.Client.sessionId, this.inc_get_ack(), pub_key);
+            .Serialize(this.Client.sessionId, ack_id, pub_key);
         await this.Send(frame);
-        this.log("Sent server-to-client key exchange with uncompressed public key.");
+        this.log("Sent server public key!");
+        this.crypt_state = CryptoState.WAIT_CLIENT_KEX;
     }
     /*
     * Sends a PING frame to the client
@@ -123,6 +138,11 @@ export class CryoServerWebsocketSession extends EventEmitter {
         const decodedAckMessage = this.ack_formatter
             .Deserialize(message);
         const ack_id = decodedAckMessage.ack;
+        if (this.crypt_state === CryptoState.WAIT_SERVER_ACK && ack_id === this.server_kex_ack_id) {
+            this.crypt_state = CryptoState.SECURE;
+            this.log("Handshake complete, channel secured!");
+            return;
+        }
         const found_message = this.client_ack_tracker.Confirm(ack_id);
         if (!found_message) {
             this.log(`Received ACK ${ack_id} for unknown message!`);
@@ -177,18 +197,33 @@ export class CryoServerWebsocketSession extends EventEmitter {
         //Server sends with first half, receives with second half (opposite of client)
         const send_key = hash.subarray(0, 16);
         const recv_key = hash.subarray(16, 32);
+        this.l_crypto = new PerSessionCryptoHelper(send_key, recv_key);
         //ACK the clients KEX in plain
         const encodedACKMessage = this.ack_formatter
             .Serialize(this.Client.sessionId, decoded.ack);
         await this.Send(encodedACKMessage);
-        this.l_crypto = new PerSessionCryptoHelper(send_key, recv_key);
+        this.log("Got client pubkey and derived keys. Waiting for client ACK of our pubkey");
+        this.crypt_state = CryptoState.WAIT_SERVER_ACK;
     }
     /*
     * Handle all incoming messages
     * */
     async HandleIncomingMessage(incoming_message) {
-        const message = this.secure ? this.l_crypto.decrypt(incoming_message) : incoming_message;
-        const message_type = CryoBinaryFrameFormatter.GetType(message);
+        let message;
+        let message_type;
+        if (this.crypt_state === CryptoState.INITIAL || this.crypt_state === CryptoState.WAIT_CLIENT_KEX) {
+            //Raw frame inspections
+            message_type = CryoBinaryFrameFormatter.GetType(incoming_message);
+            if (message_type !== BinaryMessageType.KEXCHG && message_type !== BinaryMessageType.ACK)
+                throw new Error(`Unexpected message type ${message_type} in handshake state ${this.crypt_state}`);
+            message = incoming_message;
+        }
+        else {
+            //We're already secure, or rotating keys
+            const decrypted = this.l_crypto.decrypt(incoming_message);
+            message_type = CryoBinaryFrameFormatter.GetType(decrypted);
+            message = decrypted;
+        }
         this.log(`Received ${CryoFrameInspector.Inspect(message)} from client.`);
         this.bytes_rx += message.byteLength;
         switch (message_type) {
