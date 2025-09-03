@@ -315,9 +315,8 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
 
         return new Promise<void>((resolve) => {
             Guard.AgainstNullish(this.bp_mgr);
-            Guard.AgainstNullish(this.l_crypto);
 
-            const outgoing_message = this.secure ? this.l_crypto.encrypt(encodedMessage) : encodedMessage;
+            const outgoing_message = this.secure ? this.l_crypto!.encrypt(encodedMessage) : encodedMessage;
 
             const result = this.bp_mgr!.enqueue(outgoing_message, prio);
             if (!result)
