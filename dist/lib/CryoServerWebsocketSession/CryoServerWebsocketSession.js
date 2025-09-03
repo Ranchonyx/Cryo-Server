@@ -38,6 +38,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         remoteSocket.once("end", this.HandleRemoteHangup.bind(this));
         remoteSocket.once("error", this.HandleRemoteError.bind(this));
         remoteClient.on("message", this.HandleIncomingMessage.bind(this));
+        this.init_crypto_handshake();
     }
     inc_get_ack() {
         if (this.current_ack + 1 > (2 ** 32 - 1))
