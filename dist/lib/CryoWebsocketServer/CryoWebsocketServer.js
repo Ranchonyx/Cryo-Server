@@ -1,3 +1,4 @@
+import https from "https";
 import http from "node:http";
 import { WebSocketServer } from "ws";
 import { clearInterval, setInterval } from "node:timers";
@@ -15,14 +16,19 @@ export class CryoWebsocketServer extends EventEmitter {
     WebsocketHearbeatInterval;
     sessions = [];
     log;
+    //Crypto stuff
+    /*
+        private ecdh = createECDH("prime256v1");
+        private server_pub_key: Buffer | null = null;
+    */
     static async Create(pTokenValidator, options) {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
-        const server = http.createServer();
+        const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();
         const backpressure = options && options.backpressure || {};
         const bpres_opts_filled = OverwriteUnset(backpressure, {
             dropPolicy: "drop-oldest",
-            highWaterMark: 4 * 1024 * 1024,
+            highWaterMark: 16 * 1024 * 1024,
             lowWaterMark: 1024 * 1024,
             maxQueuedBytes: 8 * 1024 * 1024,
             maxQueueCount: 1024
@@ -39,7 +45,11 @@ export class CryoWebsocketServer extends EventEmitter {
         this.WebsocketHearbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
             .ref();
         this.server.on("upgrade", this.HTTPUpgradeCallback.bind(this));
+        /*
+                this.server_pub_key = this.ecdh.getPublicKey();
+        */
         this.server.listen(socketPort, () => {
+            this.log(`SSL support? ${this.server instanceof https.Server}`);
             this.emit("listening");
         });
     }
@@ -54,6 +64,7 @@ export class CryoWebsocketServer extends EventEmitter {
     async HTTPUpgradeCallback(request, socket, head) {
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         this.log(`Upgrade request from ${socketFmt} ...`);
+        //Doesn't actuall connect via ws or wss, just there as placeholder so I can construct an URL...
         const full_host_url = new URL(`ws://${process.env.HOST ?? 'localhost'}${request.url}`);
         const authorization = full_host_url.searchParams.get("authorization");
         const x_cryo_sid = full_host_url.searchParams.get("x-cryo-sid");
@@ -97,6 +108,9 @@ export class CryoWebsocketServer extends EventEmitter {
         client.isAlive = true;
         client.sessionId = clientSid;
         const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options);
+        /*
+                await session.SendUTF8(`crypto-init::${this.server_pub_key?.toString("base64")}`);
+        */
         this.sessions.push(session);
         this.emit("session", session);
     }

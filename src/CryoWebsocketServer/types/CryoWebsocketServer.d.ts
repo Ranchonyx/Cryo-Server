@@ -4,6 +4,12 @@ export interface CryoWebsocketServerOptions {
     keepAliveIntervalMs?: number;
     port?: number;
     backpressure?: BackpressureOpts;
+    ssl?: SSLOptions;
+}
+
+export interface SSLOptions {
+    key: Buffer;
+    cert: Buffer;
 }
 
 type DropPolicy = "drop-oldest" | "drop-newest" | "dedupe-latest";

@@ -1,13 +1,13 @@
-import ws from "ws";
-import {DropPolicy} from "../../CryoWebsocketServer/types/CryoWebsocketServer.js";
+import type ws from "ws";
+import type {DropPolicy} from "../../CryoWebsocketServer/types/CryoWebsocketServer.js";
 import {clearInterval} from "node:timers";
 import Guard from "../Util/Guard.js";
-import {Socket} from "node:net";
-import {DebugLoggerFunction} from "node:util";
+import type {Socket} from "node:net";
+import type {DebugLoggerFunction} from "node:util";
 
 type MessagePriority = "control" | "data";
 
-interface MessageQueueItem {
+interface FrameQueueItem {
     buffer: Buffer;
     priority: MessagePriority;
     key?: string;
@@ -15,12 +15,12 @@ interface MessageQueueItem {
 }
 
 export class BackpressureManager {
-    private queue: MessageQueueItem[] = []
+    private queue: FrameQueueItem[] = []
     private queued_bytes = 0;
     private tick: NodeJS.Timeout | null = null;
     private stat_log_tick: NodeJS.Timeout | null = setInterval(() => this.log_stats(), 5000);
 
-    public constructor(private ws: ws, private WM_HI: number, private WM_LO: number, private MAX_Q_BYTES: number, private MAX_Q_COUNT: number, private drop: DropPolicy, private log: DebugLoggerFunction, private on_drop?: (item: MessageQueueItem) => void) {
+    public constructor(private ws: ws, private WM_HI: number, private WM_LO: number, private MAX_Q_BYTES: number, private MAX_Q_COUNT: number, private drop: DropPolicy, private log: DebugLoggerFunction, private on_drop?: (item: FrameQueueItem) => void) {
         Guard.CastAs<typeof ws & { _socket: Socket }>(this.ws);
         if (this.ws?._socket) {
             // noinspection PointlessBooleanExpressionJS
@@ -71,7 +71,7 @@ export class BackpressureManager {
             if (this.drop === "drop-oldest") {
                 if (this.queue.length > 0) {
                     const evicted_item = this.queue.shift();
-                    Guard.CastAssert<MessageQueueItem>(evicted_item, evicted_item !== undefined, "evicted_item was undefined!");
+                    Guard.CastAssert<FrameQueueItem>(evicted_item, evicted_item !== undefined, "evicted_item was undefined!");
                     this.queued_bytes -= evicted_item.buffer.byteLength;
 
                     this.on_drop?.(evicted_item);
@@ -108,7 +108,7 @@ export class BackpressureManager {
 
         while (this.queue.length > 0 && this.ws.bufferedAmount < this.WM_HI) {
             const item = this.queue.shift();
-            Guard.CastAssert<MessageQueueItem>(item, item !== undefined, "evicted_item was undefined!");
+            Guard.CastAssert<FrameQueueItem>(item, item !== undefined, "evicted_item was undefined!");
 
             this.queued_bytes -= item.buffer.byteLength;
             this.ws.send(item.buffer, {binary: true});
