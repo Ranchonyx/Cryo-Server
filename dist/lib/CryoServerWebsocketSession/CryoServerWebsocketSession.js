@@ -7,7 +7,6 @@ import { AckTracker } from "../Common/AckTracker/AckTracker.js";
 import { CryoFrameInspector } from "../Common/CryoFrameInspector/CryoFrameInspector.js";
 import { CryoExtensionRegistry } from "../CryoExtension/CryoExtensionRegistry.js";
 import { BackpressureManager } from "../Common/BackpressureManager/BackpressureManager.js";
-import Guard from "../Common/Util/Guard.js";
 import { PerSessionCryptoHelper } from "../Common/CryptoHelper/CryptoHelper.js";
 export class CryoServerWebsocketSession extends EventEmitter {
     remoteClient;
@@ -242,16 +241,13 @@ export class CryoServerWebsocketSession extends EventEmitter {
         */
         const type = CryoBinaryFrameFormatter.GetType(encodedMessage);
         const prio = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
-        this.log(`Sent ${CryoFrameInspector.Inspect(encodedMessage)} to client.`);
-        return new Promise((resolve) => {
-            Guard.AgainstNullish(this.bp_mgr);
-            const outgoing_message = this.secure ? this.l_crypto.encrypt(encodedMessage) : encodedMessage;
-            const result = this.bp_mgr.enqueue(outgoing_message, prio);
-            if (!result)
-                this.log(`Frame ${CryoBinaryFrameFormatter.GetAck(encodedMessage)} was dropped by policy.`);
-            this.bytes_tx += encodedMessage.byteLength;
-            resolve();
-        });
+        const outgoing_message = this.secure ? this.l_crypto.encrypt(encodedMessage) : encodedMessage;
+        const result = this.bp_mgr.enqueue(outgoing_message, prio);
+        if (!result) {
+            this.log(`Frame ${CryoBinaryFrameFormatter.GetAck(encodedMessage)} was dropped by policy.`);
+            return;
+        }
+        this.bytes_tx += outgoing_message.byteLength;
     }
     get Client() {
         return this.remoteClient;
