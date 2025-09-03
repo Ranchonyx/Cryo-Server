@@ -224,18 +224,19 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         const decoded = CryoFrameFormatter
             .GetFormatter("kexchg")
             .Deserialize(message);
-
         const client_pub_key = decoded.payload;
-        const secret = this.ecdh.computeSecret(client_pub_key);
 
-        //Make two aes128 hashes from the secret
+        //Compute secret
+        const secret = this.ecdh.computeSecret(client_pub_key);
         const hash = createHash("sha256")
             .update(secret)
             .digest();
 
+        //Server sends with first half, receives with second half (opposite of client)
         const send_key = hash.subarray(0, 16);
         const recv_key = hash.subarray(16, 32);
 
+        //ACK the clients KEX in plain
         const encodedACKMessage = this.ack_formatter
             .Serialize(this.Client.sessionId, decoded.ack);
         await this.Send(encodedACKMessage);
