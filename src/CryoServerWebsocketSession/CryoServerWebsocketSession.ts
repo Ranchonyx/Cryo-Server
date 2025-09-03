@@ -66,15 +66,14 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
 
     private async init_crypto_handshake() {
         this.ecdh.generateKeys();
-        const pub_key = this.ecdh.getPublicKey();
+        const pub_key = this.ecdh.getPublicKey(null, "uncompressed");
 
         const frame = CryoFrameFormatter
             .GetFormatter("kexchg")
             .Serialize(this.Client.sessionId, this.inc_get_ack(), pub_key);
 
-        await this.Send(frame, false);
-        this.log("Sent server-to-client key exchange with public key.");
-    }
+        await this.Send(frame);
+        this.log("Sent server-to-client key exchange with uncompressed public key.");    }
 
     /*
     * Sends a PING frame to the client
@@ -303,7 +302,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     /*
     * Send a buffer to the client
     * */
-    private async Send(encodedMessage: Buffer, encrypt: boolean = false): Promise<void> {
+    private async Send(encodedMessage: Buffer): Promise<void> {
         /*
                 if (!this.remoteSocket.writable && !this.remoteClient.writable) {
                     this.log("The socket being written to is not writable!");
