@@ -311,19 +311,15 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         const type = CryoBinaryFrameFormatter.GetType(encodedMessage);
         const prio: "control" | "data" = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
 
-        this.log(`Sent ${CryoFrameInspector.Inspect(encodedMessage)} to client.`);
-        return new Promise<void>((resolve) => {
-            Guard.AgainstNullish(this.bp_mgr);
+        const outgoing_message = this.secure ? this.l_crypto!.encrypt(encodedMessage) : encodedMessage;
 
-            const outgoing_message = this.secure ? this.l_crypto!.encrypt(encodedMessage) : encodedMessage;
+        const result = this.bp_mgr!.enqueue(outgoing_message, prio);
+        if(!result) {
+            this.log(`Frame ${CryoBinaryFrameFormatter.GetAck(encodedMessage)} was dropped by policy.`);
+            return;
+        }
 
-            const result = this.bp_mgr!.enqueue(outgoing_message, prio);
-            if (!result)
-                this.log(`Frame ${CryoBinaryFrameFormatter.GetAck(encodedMessage)} was dropped by policy.`);
-
-            this.bytes_tx += encodedMessage.byteLength;
-            resolve();
-        });
+        this.bytes_tx += outgoing_message.byteLength;
     }
 
     public get Client(): ws & SocketType {
