@@ -201,7 +201,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         //ACK the clients KEX in plain
         const encodedACKMessage = this.ack_formatter
             .Serialize(this.Client.sessionId, decoded.ack);
-        await this.Send(encodedACKMessage);
+        await this.Send(encodedACKMessage, true);
         this.log("Got client pubkey and derived keys. Waiting for client ACK of our pubkey");
         this.crypt_state = CryptoState.WAIT_SERVER_ACK;
     }
@@ -214,8 +214,11 @@ export class CryoServerWebsocketSession extends EventEmitter {
         if (this.crypt_state === CryptoState.INITIAL || this.crypt_state === CryptoState.WAIT_CLIENT_KEX) {
             //Raw frame inspections
             message_type = CryoBinaryFrameFormatter.GetType(incoming_message);
-            if (message_type !== BinaryMessageType.KEXCHG && message_type !== BinaryMessageType.ACK)
-                throw new Error(`Unexpected message type ${message_type} in handshake state ${this.crypt_state}`);
+            this.log(`Handshake state=${this.crypt_state}, rawType=${message_type}, ACK=${BinaryMessageType.ACK}, KEXCHG=${BinaryMessageType.KEXCHG}, buf=${incoming_message.toString("hex")}`);
+            if (![BinaryMessageType.KEXCHG, BinaryMessageType.ACK].includes(message_type)) {
+                this.log(`Unexpected message type ${message_type} in handshake state ${this.crypt_state}`);
+                this.Destroy();
+            }
             message = incoming_message;
         }
         else {
@@ -245,8 +248,10 @@ export class CryoServerWebsocketSession extends EventEmitter {
             case BinaryMessageType.KEXCHG:
                 await this.HandleKeyExchangeMessage(message);
                 return;
-            default:
-                throw new Error(`Unsupported binary message type ${message_type}!`);
+            default: {
+                this.log(`Unsupported binary message type ${message_type}!`);
+                this.Destroy();
+            }
         }
     }
     /*
@@ -267,7 +272,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     /*
     * Send a buffer to the client
     * */
-    async Send(encodedMessage) {
+    async Send(encodedMessage, plain = false) {
         /*
                 if (!this.remoteSocket.writable && !this.remoteClient.writable) {
                     this.log("The socket being written to is not writable!");
@@ -276,7 +281,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         */
         const type = CryoBinaryFrameFormatter.GetType(encodedMessage);
         const prio = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
-        const outgoing_message = this.secure ? this.l_crypto.encrypt(encodedMessage) : encodedMessage;
+        const outgoing_message = (this.secure && !plain) ? this.l_crypto.encrypt(encodedMessage) : encodedMessage;
         const result = this.bp_mgr.enqueue(outgoing_message, prio);
         if (!result) {
             this.log(`Frame ${CryoBinaryFrameFormatter.GetAck(encodedMessage)} was dropped by policy.`);

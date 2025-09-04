@@ -1,12 +1,12 @@
 import type {UUID} from "node:crypto";
 
 export enum BinaryMessageType {
-    UTF8DATA,
-    ACK,
-    PING_PONG,
-    ERROR,
-    BINARYDATA,
-    KEXCHG
+    ACK = 0,
+    ERROR = 1,
+    PING_PONG = 2,
+    UTF8DATA = 3,
+    BINARYDATA = 4,
+    KEXCHG = 5
 }
 
 type BinaryMessage<T, U extends BinaryMessageType> = {

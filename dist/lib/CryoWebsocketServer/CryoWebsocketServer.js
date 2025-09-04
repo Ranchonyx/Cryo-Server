@@ -16,11 +16,6 @@ export class CryoWebsocketServer extends EventEmitter {
     WebsocketHearbeatInterval;
     sessions = [];
     log;
-    //Crypto stuff
-    /*
-        private ecdh = createECDH("prime256v1");
-        private server_pub_key: Buffer | null = null;
-    */
     static async Create(pTokenValidator, options) {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
@@ -45,16 +40,19 @@ export class CryoWebsocketServer extends EventEmitter {
         this.WebsocketHearbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
             .ref();
         this.server.on("upgrade", this.HTTPUpgradeCallback.bind(this));
-        /*
-                this.server_pub_key = this.ecdh.getPublicKey();
-        */
         this.server.listen(socketPort, () => {
             this.log(`SSL support? ${this.server instanceof https.Server}`);
             this.emit("listening");
         });
     }
     __denyAndDestroy(pSocket, message) {
-        const response = `HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n`;
+        const body = `<html lang="de-DE"><body><h1>401 Unauthorized</h1><p>${message}</p></body></html>`;
+        const response = `HTTP/1.1 401 Unauthorized\r\n` +
+            `Content-Type: text/html; charset=utf-8\r\n` +
+            `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+            `Connection: close\r\n` +
+            `\r\n` +
+            body;
         pSocket.write(response, () => {
             pSocket.end(() => {
                 this.log(message);
@@ -80,6 +78,10 @@ export class CryoWebsocketServer extends EventEmitter {
         //Check x-cryo-sid header
         if (!x_cryo_sid) {
             this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No SID in 'x-cryo-sid' header.`);
+            return;
+        }
+        if (this.sessions.findIndex(s => s.id === x_cryo_sid) > -1) {
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. The session already exists.`);
             return;
         }
         //Extract client sid
@@ -108,10 +110,11 @@ export class CryoWebsocketServer extends EventEmitter {
         client.isAlive = true;
         client.sessionId = clientSid;
         const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options);
-        /*
-                await session.SendUTF8(`crypto-init::${this.server_pub_key?.toString("base64")}`);
-        */
         this.sessions.push(session);
+        session.on("closed", () => {
+            const s_idx = this.sessions.findIndex(s => s.id === session.id);
+            this.sessions.splice(s_idx, 1);
+        });
         this.emit("session", session);
     }
     /*
@@ -137,15 +140,6 @@ export class CryoWebsocketServer extends EventEmitter {
             await session.Ping();
         }
     }
-    /*    private GetValidClients(): Array<CryoServerWebsocketSession> {
-            if (!this.ws_server.clients)
-                return [];
-
-            if (this.ws_server.clients.size === 0)
-                return [];
-
-            return this.sessions;
-        }*/
     /**
      * Teardown this server and all sessions, terminate all connections
      */

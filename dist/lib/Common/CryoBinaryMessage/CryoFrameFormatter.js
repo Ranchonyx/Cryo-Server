@@ -1,9 +1,9 @@
 export var BinaryMessageType;
 (function (BinaryMessageType) {
-    BinaryMessageType[BinaryMessageType["UTF8DATA"] = 0] = "UTF8DATA";
-    BinaryMessageType[BinaryMessageType["ACK"] = 1] = "ACK";
+    BinaryMessageType[BinaryMessageType["ACK"] = 0] = "ACK";
+    BinaryMessageType[BinaryMessageType["ERROR"] = 1] = "ERROR";
     BinaryMessageType[BinaryMessageType["PING_PONG"] = 2] = "PING_PONG";
-    BinaryMessageType[BinaryMessageType["ERROR"] = 3] = "ERROR";
+    BinaryMessageType[BinaryMessageType["UTF8DATA"] = 3] = "UTF8DATA";
     BinaryMessageType[BinaryMessageType["BINARYDATA"] = 4] = "BINARYDATA";
     BinaryMessageType[BinaryMessageType["KEXCHG"] = 5] = "KEXCHG";
 })(BinaryMessageType || (BinaryMessageType = {}));
