@@ -5,7 +5,9 @@ const typeToStringMap = {
     2: "ping/pong",
     3: "error",
     4: "binarydata",
-    5: "kexchg"
+    5: "server_hello",
+    6: "client_hello",
+    7: "handshake_done",
 };
 export class CryoFrameInspector {
     static Inspect(message, encoding = "utf8") {

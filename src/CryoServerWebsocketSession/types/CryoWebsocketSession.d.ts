@@ -7,5 +7,6 @@ export interface ICryoServerWebsocketSessionEvents {
     "stat-bytes-rx": (stat: number) => Promise<void>;
     "stat-bytes-tx": (stat: number) => Promise<void>;
 
+    "connected": () => void;
     "closed": () => void;
 }
