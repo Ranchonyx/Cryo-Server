@@ -32,6 +32,7 @@ export class CryoHandshakeEngine {
         const hello_frame = this.formatter
             .GetFormatter("server_hello")
             .Serialize(this.sid, ack, my_pub_key);
+        console.warn(`Sending SERVER_HELLO, type=${hello_frame.readUint8(20)}, buf=${hello_frame.toString("hex")}`);
         await this.send_plain(hello_frame);
         this.handshake_state = HandshakeState.WAIT_CLIENT_HELLO;
     }
