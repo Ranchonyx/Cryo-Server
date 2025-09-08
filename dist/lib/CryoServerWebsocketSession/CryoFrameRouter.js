@@ -33,8 +33,7 @@ export class CryoFrameRouter {
         type = this.try_get_type(raw);
         if (type === null && this.is_secure()) {
             try {
-                const decrypted = this.decrypt(raw);
-                frame = decrypted;
+                frame = this.decrypt(raw);
                 type = this.try_get_type(frame);
             }
             catch (e) {

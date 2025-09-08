@@ -16,6 +16,8 @@ export class CryoHandshakeEngine {
     ECDH_CURVE_NAME = "prime256v1";
     handshake_state = HandshakeState.INITIAL;
     ecdh = createECDH(this.ECDH_CURVE_NAME);
+    transmit_key = null;
+    receive_key = null;
     constructor(sid, send_plain, formatter, next_ack, events) {
         this.sid = sid;
         this.send_plain = send_plain;
@@ -32,7 +34,9 @@ export class CryoHandshakeEngine {
         const hello_frame = this.formatter
             .GetFormatter("server_hello")
             .Serialize(this.sid, ack, my_pub_key);
-        console.warn(`Sending SERVER_HELLO, type=${hello_frame.readUint8(20)}, buf=${hello_frame.toString("hex")}`);
+        /*
+                console.warn(`Sending SERVER_HELLO, type=${hello_frame.readUint8(20)}, buf=${hello_frame.toString("hex")}`)
+        */
         await this.send_plain(hello_frame);
         this.handshake_state = HandshakeState.WAIT_CLIENT_HELLO;
     }
@@ -48,11 +52,10 @@ export class CryoHandshakeEngine {
         //Derive the keys
         const secret = this.ecdh.computeSecret(client_pub_key);
         const hash = createHash("sha256").update(secret).digest();
-        const transmit_key = hash.subarray(0, 16);
-        const receive_key = hash.subarray(16, 32);
+        this.transmit_key = hash.subarray(0, 16);
+        this.receive_key = hash.subarray(16, 32);
         //Tell the session that we got the keys, but we don't wanna encrypt just yet
         this.handshake_state = HandshakeState.WAIT_CLIENT_DONE;
-        this.events.onSecure({ receive_key, transmit_key });
         //Send HANDSHAKE_DONE
         const done = CryoFrameFormatter
             .GetFormatter("handshake_done")
@@ -64,6 +67,7 @@ export class CryoHandshakeEngine {
             this.events.onFailure(`HANDSHAKE_DONE received while in state ${this.state}`);
             return;
         }
+        this.events.onSecure({ receive_key: this.receive_key, transmit_key: this.transmit_key });
         //Client got our SERVER_HELLO and finished on its side
         this.handshake_state = HandshakeState.SECURE;
     }
