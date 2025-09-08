@@ -37,6 +37,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     public static async Create(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions) {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
+        const use_cale = options && options.cale || true;
 
         const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();
 
@@ -49,10 +50,16 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
             maxQueueCount: 1024
         });
 
-        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled);
+        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled, use_cale);
     }
 
-    private constructor(private server: http.Server | https.Server, private tokenValidator: ITokenValidator, keepAliveInterval: number, socketPort: number, private backpressure_options: FilledBackpressureOpts) {
+    private constructor(private server: http.Server | https.Server,
+                        private tokenValidator: ITokenValidator,
+                        keepAliveInterval: number,
+                        socketPort: number,
+                        private backpressure_options: FilledBackpressureOpts,
+                        private use_cale: boolean = true) {
+
         super();
         this.log = CreateDebugLogger("CRYO_SERVER");
 
@@ -97,18 +104,18 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
 
         //Check auth header
         if (!authorization) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No authorization header.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No auth data supplied.`);
             return;
         }
 
         if (!authorization.startsWith("Bearer")) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No bearer authorization in header.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No auth data supplied.`);
             return;
         }
 
         //Check x-cryo-sid header
         if (!x_cryo_sid) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No SID in 'x-cryo-sid' header.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No SID supplied.`);
             return;
         }
 
@@ -116,7 +123,6 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
             this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. The session already exists.`);
             return;
         }
-
 
         //Extract client sid
         const clientSessionId = `${x_cryo_sid}` as UUID;
@@ -152,7 +158,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         client.isAlive = true;
         client.sessionId = clientSid;
 
-        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options);
+        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale);
         this.sessions.push(session);
 
         session.on("closed", () => {

@@ -12,6 +12,7 @@ export class CryoWebsocketServer extends EventEmitter {
     server;
     tokenValidator;
     backpressure_options;
+    use_cale;
     ws_server;
     WebsocketHearbeatInterval;
     sessions = [];
@@ -19,6 +20,7 @@ export class CryoWebsocketServer extends EventEmitter {
     static async Create(pTokenValidator, options) {
         const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
         const sockPort = options && options.port || 8080;
+        const use_cale = options && options.cale || true;
         const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();
         const backpressure = options && options.backpressure || {};
         const bpres_opts_filled = OverwriteUnset(backpressure, {
@@ -28,13 +30,14 @@ export class CryoWebsocketServer extends EventEmitter {
             maxQueuedBytes: 8 * 1024 * 1024,
             maxQueueCount: 1024
         });
-        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled);
+        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled, use_cale);
     }
-    constructor(server, tokenValidator, keepAliveInterval, socketPort, backpressure_options) {
+    constructor(server, tokenValidator, keepAliveInterval, socketPort, backpressure_options, use_cale = true) {
         super();
         this.server = server;
         this.tokenValidator = tokenValidator;
         this.backpressure_options = backpressure_options;
+        this.use_cale = use_cale;
         this.log = CreateDebugLogger("CRYO_SERVER");
         this.ws_server = new WebSocketServer({ noServer: true });
         this.WebsocketHearbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
@@ -68,16 +71,16 @@ export class CryoWebsocketServer extends EventEmitter {
         const x_cryo_sid = full_host_url.searchParams.get("x-cryo-sid");
         //Check auth header
         if (!authorization) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No authorization header.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No auth data supplied.`);
             return;
         }
         if (!authorization.startsWith("Bearer")) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No bearer authorization in header.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No auth data supplied.`);
             return;
         }
         //Check x-cryo-sid header
         if (!x_cryo_sid) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No SID in 'x-cryo-sid' header.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No SID supplied.`);
             return;
         }
         if (this.sessions.findIndex(s => s.id === x_cryo_sid) > -1) {
@@ -109,7 +112,7 @@ export class CryoWebsocketServer extends EventEmitter {
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         client.isAlive = true;
         client.sessionId = clientSid;
-        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options);
+        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale);
         this.sessions.push(session);
         session.on("closed", () => {
             const s_idx = this.sessions.findIndex(s => s.id === session.id);

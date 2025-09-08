@@ -12,6 +12,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     remoteClient;
     remoteSocket;
     remoteName;
+    use_cale;
     client_ack_tracker = new AckTracker();
     bp_mgr = null;
     current_ack = 0;
@@ -26,11 +27,12 @@ export class CryoServerWebsocketSession extends EventEmitter {
     crypto = null;
     handshake;
     router;
-    constructor(remoteClient, remoteSocket, remoteName, backpressure_opts) {
+    constructor(remoteClient, remoteSocket, remoteName, backpressure_opts, use_cale) {
         super();
         this.remoteClient = remoteClient;
         this.remoteSocket = remoteSocket;
         this.remoteName = remoteName;
+        this.use_cale = use_cale;
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
         this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy, CreateDebugLogger(`CRYO_BACKPRESSURE`));
         const handshake_events = {
@@ -40,11 +42,12 @@ export class CryoServerWebsocketSession extends EventEmitter {
             },
             onFailure: (reason) => {
                 this.log(`Handshake failure: ${reason}`);
+                this.Client.close(1000, "Closing session.");
                 this.Destroy();
             }
         };
         this.handshake = new CryoHandshakeEngine(this.Client.sessionId, (buffer) => this.Send(buffer, true), CryoFrameFormatter, () => this.inc_get_ack(), handshake_events);
-        this.router = new CryoFrameRouter(CryoFrameFormatter, () => this.handshake.is_secure, (buffer) => this.crypto.decrypt(buffer), {
+        this.router = new CryoFrameRouter(CryoFrameFormatter, () => this.use_cale && this.handshake.is_secure, (buffer) => this.crypto.decrypt(buffer), {
             on_ping_pong: async (b) => this.HandlePingPongMessage(b),
             on_ack: async (b) => this.HandleAckMessage(b),
             on_error: async (b) => this.HandleErrorMessage(b),
@@ -53,10 +56,14 @@ export class CryoServerWebsocketSession extends EventEmitter {
             on_client_hello: async (b) => this.handshake.on_client_hello(b),
             on_handshake_done: async (b) => this.handshake.on_client_handshake_done(b)
         });
-        remoteSocket.once("end", this.HandleRemoteHangup.bind(this));
-        remoteSocket.once("error", this.HandleRemoteError.bind(this));
+        remoteSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
+        remoteSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));
+        remoteClient.on("close", this.WEBSOCKET_HandleRemoteClose.bind(this));
         remoteClient.on("message", (raw) => this.router.do_route(raw));
-        this.handshake.start_server_hello();
+        if (use_cale)
+            this.handshake.start_server_hello();
+        else
+            this.log("CALE disabled, running in unencrypted mode.");
     }
     inc_get_ack() {
         if (this.current_ack + 1 > (2 ** 32 - 1))
@@ -176,19 +183,37 @@ export class CryoServerWebsocketSession extends EventEmitter {
         if (should_emit)
             this.emit("message-binary", boxed_message.value);
     }
+    TranslateCloseCode(code) {
+        switch (code) {
+            case 1000:
+                return "Connection closed normally.";
+            case 1001:
+                return "Connection going away.";
+            case 1002:
+                return "Protocol error.";
+            case 1006:
+                return "Connection closed abnormally.";
+            default:
+                return "Unspecified cause for connection closure.";
+        }
+    }
+    WEBSOCKET_HandleRemoteClose(code, reason) {
+        const code_string = this.TranslateCloseCode(code);
+        this.log(`Client ${this.remoteName} has disconnected. Code=${code_string}, reason=${reason.toString("utf8")}`);
+        this.Destroy();
+    }
     /*
     * Log hangup and destroy session
     * */
-    HandleRemoteHangup() {
-        this.log(`Socket ${this.remoteName} has hung up.`);
+    TCPSOCKET_HandleRemoteEnd() {
+        this.log(`TCP Peer '${this.remoteName}' connection closed cleanly by client session.`);
         this.Destroy();
-        this.emit("closed");
     }
     /*
     * Log error and destroy session
     * */
-    HandleRemoteError(err) {
-        this.log(`Socket ${this.Client.sessionId} was closed due to a connection error. Code '${err.code}`);
+    TCPSOCKET_HandleRemoteError(err) {
+        this.log(`TCP Peer '${this.remoteName}' threw an error '${err.message}' (${err?.code})`);
         this.Destroy();
     }
     /*
@@ -197,8 +222,13 @@ export class CryoServerWebsocketSession extends EventEmitter {
     async Send(encodedMessage, plain = false) {
         const type = CryoBinaryFrameFormatter.GetType(encodedMessage);
         const prio = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
-        const is_secure = this.handshake.state === HandshakeState.SECURE;
-        const outgoing = is_secure && !plain ? this.crypto.encrypt(encodedMessage) : encodedMessage;
+        let outgoing = encodedMessage;
+        if (this.use_cale && this.secure && !plain)
+            outgoing = this.crypto.encrypt(encodedMessage);
+        /*
+                const is_secure = this.handshake.state === HandshakeState.SECURE;
+                const outgoing = is_secure && !plain ? this.crypto!.encrypt(encodedMessage) : encodedMessage;
+        */
         const ok = this.bp_mgr.enqueue(outgoing, prio);
         if (!ok) {
             this.log(`Frame ${CryoBinaryFrameFormatter.GetAck(encodedMessage)} was dropped by policy.`);
@@ -222,12 +252,17 @@ export class CryoServerWebsocketSession extends EventEmitter {
         return this.Client.sessionId;
     }
     get secure() {
-        return this.handshake?.state === HandshakeState.SECURE && this.crypto !== null;
+        return this.use_cale && this.handshake?.state === HandshakeState.SECURE && this.crypto !== null;
     }
     Destroy() {
         this.bp_mgr?.Destroy();
         this.client_ack_tracker.Destroy();
-        this.Client.close(1000, "Closing session.");
+        try {
+            this.Client.close(1000, "Closing session.");
+        }
+        catch {
+            //Ignore
+        }
         this.emit("closed");
     }
 }
