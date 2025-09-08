@@ -97,6 +97,7 @@ export interface CryoWebsocketServerOptions {
     keepAliveIntervalMs?: number;
     port?: number;
     backpressure?: BackpressureOpts;
+    use_cale?: boolean;
 }
 
 export declare interface CryoWebsocketServerEvents {
