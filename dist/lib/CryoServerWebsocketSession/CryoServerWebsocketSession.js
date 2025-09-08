@@ -44,7 +44,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
             }
         };
         this.handshake = new CryoHandshakeEngine(this.Client.sessionId, (buffer) => this.Send(buffer, true), CryoFrameFormatter, () => this.inc_get_ack(), handshake_events);
-        this.router = new CryoFrameRouter(CryoFrameFormatter, () => this.handshake.state === HandshakeState.SECURE, (buffer) => this.crypto.decrypt(buffer), {
+        this.router = new CryoFrameRouter(CryoFrameFormatter, () => this.handshake.is_secure, (buffer) => this.crypto.decrypt(buffer), {
             on_ping_pong: async (b) => this.HandlePingPongMessage(b),
             on_ack: async (b) => this.HandleAckMessage(b),
             on_error: async (b) => this.HandleErrorMessage(b),

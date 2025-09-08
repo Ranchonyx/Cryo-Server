@@ -70,7 +70,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
 
         this.router = new CryoFrameRouter(
             CryoFrameFormatter,
-            () => this.handshake.state === HandshakeState.SECURE,
+            () => this.handshake.is_secure,
             (buffer) => this.crypto!.decrypt(buffer),
             {
                 on_ping_pong: async (b) => this.HandlePingPongMessage(b),
