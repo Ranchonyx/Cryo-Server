@@ -61,8 +61,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             },
             onFailure: (reason) => {
                 this.log(`Handshake failure: ${reason}`);
-                this.Client.close(1000, "Closing session.");
-                this.Destroy();
+                this.Destroy(1002, "Error during CALE handshake.");
             }
         };
 
@@ -75,7 +74,6 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         );
 
         this.router = new CryoFrameRouter(
-            CryoFrameFormatter,
             () => this.use_cale && this.handshake.is_secure,
             (buffer) => this.crypto!.decrypt(buffer),
             {
@@ -85,7 +83,12 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
                 on_utf8: async (b) => this.HandleUTF8DataMessage(b),
                 on_binary: async (b) => this.HandleBinaryDataMessage(b),
 
-                on_client_hello: async (b) => this.handshake.on_client_hello(b),
+                on_client_hello: async (b) => {
+                    if(use_cale)
+                        await this.handshake.on_client_hello(b);
+                    else
+                        this.Destroy(1002, "CALE Mismatch. The client excepts CALE encryption, which is currently disabled.");
+                },
                 on_handshake_done: async (b) => this.handshake.on_client_handshake_done(b)
             }
         );
@@ -98,7 +101,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         if (use_cale)
             this.handshake.start_server_hello();
         else
-            this.log("CALE disabled, running in unencrypted mode.")
+            this.log("CALE disabled, running in unencrypted mode.");
     }
 
     private inc_get_ack(): number {
@@ -274,7 +277,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         const code_string = this.TranslateCloseCode(code);
         this.log(`Client ${this.remoteName} has disconnected. Code=${code_string}, reason=${reason.toString("utf8")}`);
 
-        this.Destroy();
+        this.Destroy(1000, "Connection closed gracefully.");
     }
 
     /*
@@ -282,7 +285,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     * */
     private TCPSOCKET_HandleRemoteEnd() {
         this.log(`TCP Peer '${this.remoteName}' connection closed cleanly by client session.`);
-        this.Destroy();
+        this.Destroy(1000, "Connection closed gracefully.");
     }
 
     /*
@@ -292,7 +295,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         this.log(`TCP Peer '${this.remoteName}' threw an error '${err.message}' (${(err as Error & {
             code?: string
         })?.code})`)
-        this.Destroy();
+        this.Destroy(1011, "Connection closed erroneously.");
     }
 
     /*
@@ -343,11 +346,12 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         return this.use_cale && this.handshake?.state === HandshakeState.SECURE && this.crypto !== null;
     }
 
-    public Destroy() {
+    public Destroy(code: number = 1000, message: string = "Closing session.") {
         this.bp_mgr?.Destroy();
         this.client_ack_tracker.Destroy();
         try {
-            this.Client.close(1000, "Closing session.");
+            this.log(`Teardown of session. Code=${code}, reason=${message}`);
+            this.Client.close(code, message);
         } catch {
             //Ignore
         }

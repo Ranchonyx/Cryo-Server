@@ -1,7 +1,6 @@
 import { BinaryMessageType } from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 export class CryoFrameRouter {
-    formatter;
     is_secure;
     decrypt;
     handlers;
@@ -14,8 +13,7 @@ export class CryoFrameRouter {
         BinaryMessageType.PING_PONG, //Optional
         BinaryMessageType.ERROR
     ];
-    constructor(formatter, is_secure, decrypt, handlers, log = CreateDebugLogger("CRYO_FRAME_ROUTER")) {
-        this.formatter = formatter;
+    constructor(is_secure, decrypt, handlers, log = CreateDebugLogger("CRYO_FRAME_ROUTER")) {
         this.is_secure = is_secure;
         this.decrypt = decrypt;
         this.handlers = handlers;

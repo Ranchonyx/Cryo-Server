@@ -130,7 +130,7 @@ export class CryoWebsocketServer extends EventEmitter {
                 this.log(`Terminating dead client session ${session.Client.sessionId}`);
                 const sIdx = this.sessions.findIndex(s => s.Client.sessionId === session.Client.sessionId);
                 const retrievedSession = this.sessions.splice(sIdx, 1)[0];
-                retrievedSession.Destroy();
+                retrievedSession.Destroy(1001, "Disconnecting session due to not responding to ping frames.");
                 continue;
             }
             //Also to housekeeping in the ACK tracker of each client
@@ -153,7 +153,7 @@ export class CryoWebsocketServer extends EventEmitter {
         this.WebsocketHearbeatInterval.unref();
         clearInterval(this.WebsocketHearbeatInterval);
         for (const session of this.sessions)
-            session.Destroy();
+            session.Destroy(1001, "Server shutdown.");
         this.ws_server.removeAllListeners();
         this.ws_server.close();
     }

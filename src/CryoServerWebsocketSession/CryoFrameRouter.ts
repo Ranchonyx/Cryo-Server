@@ -1,4 +1,4 @@
-import CryoFrameFormatter, {BinaryMessageType} from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
+import {BinaryMessageType} from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
 import {DebugLoggerFunction} from "node:util";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 
@@ -27,15 +27,15 @@ export class CryoFrameRouter {
     ];
 
     public constructor(
-        private readonly formatter: typeof CryoFrameFormatter,
         private readonly is_secure: () => boolean,
         private readonly decrypt: (buffer: Buffer) => Buffer,
         private readonly handlers: RouterHandlers,
         private log: DebugLoggerFunction = CreateDebugLogger("CRYO_FRAME_ROUTER")
-    ) {}
+    ) {
+    }
 
     private try_get_type(buf: Buffer): BinaryMessageType | null {
-        if(!buf || buf.length < 21)
+        if (!buf || buf.length < 21)
             return null;
 
         const type_byte = buf.readUint8(20);
@@ -47,7 +47,7 @@ export class CryoFrameRouter {
         let type: BinaryMessageType | null = null;
 
         type = this.try_get_type(raw);
-        if(type === null && this.is_secure()) {
+        if (type === null && this.is_secure()) {
             try {
                 frame = this.decrypt(raw);
                 type = this.try_get_type(frame);
@@ -57,7 +57,7 @@ export class CryoFrameRouter {
             }
         }
 
-        if(type === null) {
+        if (type === null) {
             this.log(`Unknown frame type`, raw);
             return;
         }
