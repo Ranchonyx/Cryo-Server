@@ -35,13 +35,13 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     private readonly log: DebugLoggerFunction;
 
     public static async Create(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions) {
-        const keepAliveInterval = options && options.keepAliveIntervalMs || 15000;
-        const sockPort = options && options.port || 8080;
-        const use_cale = options && options.cale || true;
+        const keepAliveInterval = options?.keepAliveIntervalMs ?? 15000;
+        const sockPort = options?.port ?? 8080;
+        const use_cale = options?.cale ?? true;
+        const backpressure = options?.backpressure ?? {};
 
         const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();
 
-        const backpressure = options && options.backpressure || {};
         const bpres_opts_filled: FilledBackpressureOpts = OverwriteUnset(backpressure, {
             dropPolicy: "drop-oldest",
             highWaterMark: 16 * 1024 * 1024,
