@@ -30,6 +30,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
 
     private bytes_rx = 0;
     private bytes_tx = 0;
+    private destroyed = false;
 
     private readonly log: DebugLoggerFunction;
 
@@ -350,6 +351,9 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         } catch {
             //Ignore
         }
-        this.emit("closed");
+        if(!this.destroyed)
+            this.emit("closed");
+
+        this.destroyed = true;
     }
 }

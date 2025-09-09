@@ -18,6 +18,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     current_ack = 0;
     bytes_rx = 0;
     bytes_tx = 0;
+    destroyed = false;
     log;
     ping_pong_formatter = CryoBinaryFrameFormatter.GetFormatter("ping_pong");
     ack_formatter = CryoBinaryFrameFormatter.GetFormatter("ack");
@@ -263,6 +264,8 @@ export class CryoServerWebsocketSession extends EventEmitter {
         catch {
             //Ignore
         }
-        this.emit("closed");
+        if (!this.destroyed)
+            this.emit("closed");
+        this.destroyed = true;
     }
 }
