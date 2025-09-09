@@ -5,7 +5,7 @@ export interface CryoWebsocketServerOptions {
     port?: number;
     backpressure?: BackpressureOpts;
     ssl?: SSLOptions;
-    cale: boolean;
+    use_cale: boolean;
 }
 
 export interface SSLOptions {

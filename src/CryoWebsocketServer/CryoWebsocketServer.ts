@@ -37,7 +37,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     public static async Create(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions) {
         const keepAliveInterval = options?.keepAliveIntervalMs ?? 15000;
         const sockPort = options?.port ?? 8080;
-        const use_cale = options?.cale ?? true;
+        const use_cale = options?.use_cale ?? true;
         const backpressure = options?.backpressure ?? {};
 
         const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();

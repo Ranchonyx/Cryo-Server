@@ -20,7 +20,7 @@ export class CryoWebsocketServer extends EventEmitter {
     static async Create(pTokenValidator, options) {
         const keepAliveInterval = options?.keepAliveIntervalMs ?? 15000;
         const sockPort = options?.port ?? 8080;
-        const use_cale = options?.cale ?? true;
+        const use_cale = options?.use_cale ?? true;
         const backpressure = options?.backpressure ?? {};
         const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();
         const bpres_opts_filled = OverwriteUnset(backpressure, {
