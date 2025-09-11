@@ -66,7 +66,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         remoteClient.on("close", this.WEBSOCKET_HandleRemoteClose.bind(this));
         remoteClient.on("message", (raw) => this.router.do_route(raw));
         if (use_cale)
-            this.handshake.start_server_hello();
+            this.handshake.start_server_hello().then(() => null);
         else
             this.log("CALE disabled, running in unencrypted mode.");
     }

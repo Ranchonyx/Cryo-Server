@@ -62,7 +62,7 @@ export class CryoHandshakeEngine {
             .Serialize(this.sid, decoded.ack, null);
         await this.send_plain(done);
     }
-    on_client_handshake_done(frame) {
+    on_client_handshake_done(_frame) {
         if (this.handshake_state !== HandshakeState.WAIT_CLIENT_DONE) {
             this.events.onFailure(`HANDSHAKE_DONE received while in state ${this.state}`);
             return;

@@ -99,7 +99,7 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         remoteClient.on("message", (raw: Buffer) => this.router.do_route(raw));
 
         if (use_cale)
-            this.handshake.start_server_hello();
+            this.handshake.start_server_hello().then(() => null);
         else
             this.log("CALE disabled, running in unencrypted mode.");
     }

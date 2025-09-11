@@ -12,13 +12,17 @@ class CryoExtensionExecutor {
     }
 
     private async execute_if_present(extension: CryoExtension, handler_name: Exclude<keyof CryoExtension, "name">, message: Box<Buffer | string>): Promise<boolean> {
-        if (extension[handler_name]) {
+        if (!extension[handler_name])
+            return true;
+
+        try {
             log(`${extension.name}::${handler_name} is present. Executing with: `, message.value);
             ///@ts-expect-error
             return extension[handler_name](this.session, message);
+        } catch (ex) {
+            log(`Call to '${handler_name}' of extension '${extension.name}' threw an error`, ex);
+            return true;
         }
-
-        return true;
     }
 
     public async apply_before_send(message: Box<Buffer | string>): Promise<boolean> {

@@ -6,12 +6,17 @@ class CryoExtensionExecutor {
         this.session = session;
     }
     async execute_if_present(extension, handler_name, message) {
-        if (extension[handler_name]) {
+        if (!extension[handler_name])
+            return true;
+        try {
             log(`${extension.name}::${handler_name} is present. Executing with: `, message.value);
             ///@ts-expect-error
             return extension[handler_name](this.session, message);
         }
-        return true;
+        catch (ex) {
+            log(`Call to '${handler_name}' of extension '${extension.name}' threw an error`, ex);
+            return true;
+        }
     }
     async apply_before_send(message) {
         let should_emit_event = true;

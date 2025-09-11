@@ -5,14 +5,6 @@ export class CryoFrameRouter {
     decrypt;
     handlers;
     log;
-    plaintext_during_handshake = [
-        BinaryMessageType.SERVER_HELLO,
-        BinaryMessageType.CLIENT_HELLO,
-        BinaryMessageType.HANDSHAKE_DONE,
-        BinaryMessageType.ACK, //Optional
-        BinaryMessageType.PING_PONG, //Optional
-        BinaryMessageType.ERROR
-    ];
     constructor(is_secure, decrypt, handlers, log = CreateDebugLogger("CRYO_FRAME_ROUTER")) {
         this.is_secure = is_secure;
         this.decrypt = decrypt;
@@ -27,7 +19,7 @@ export class CryoFrameRouter {
     }
     async do_route(raw) {
         let frame = raw;
-        let type = null;
+        let type;
         type = this.try_get_type(raw);
         if (type === null && this.is_secure()) {
             try {

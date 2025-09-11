@@ -17,15 +17,6 @@ interface RouterHandlers {
 }
 
 export class CryoFrameRouter {
-    private plaintext_during_handshake: BinaryMessageType[] = [
-        BinaryMessageType.SERVER_HELLO,
-        BinaryMessageType.CLIENT_HELLO,
-        BinaryMessageType.HANDSHAKE_DONE,
-        BinaryMessageType.ACK,              //Optional
-        BinaryMessageType.PING_PONG,        //Optional
-        BinaryMessageType.ERROR
-    ];
-
     public constructor(
         private readonly is_secure: () => boolean,
         private readonly decrypt: (buffer: Buffer) => Buffer,
@@ -44,7 +35,7 @@ export class CryoFrameRouter {
 
     public async do_route(raw: Buffer): Promise<void> {
         let frame: Buffer = raw;
-        let type: BinaryMessageType | null = null;
+        let type: BinaryMessageType | null;
 
         type = this.try_get_type(raw);
         if (type === null && this.is_secure()) {

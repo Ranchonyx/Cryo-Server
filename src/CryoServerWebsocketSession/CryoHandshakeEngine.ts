@@ -80,7 +80,7 @@ export class CryoHandshakeEngine {
         await this.send_plain(done);
     }
 
-    public on_client_handshake_done(frame: Buffer): void {
+    public on_client_handshake_done(_frame: Buffer): void {
         if (this.handshake_state !== HandshakeState.WAIT_CLIENT_DONE) {
             this.events.onFailure(`HANDSHAKE_DONE received while in state ${this.state}`);
             return;
