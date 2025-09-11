@@ -8,6 +8,14 @@ import { BackpressureManager } from "../Common/BackpressureManager/BackpressureM
 import { CryoCryptoBox } from "./CryoCryptoBox.js";
 import { CryoHandshakeEngine, HandshakeState } from "./CryoHandshakeEngine.js";
 import { CryoFrameRouter } from "./CryoFrameRouter.js";
+var CloseCode;
+(function (CloseCode) {
+    CloseCode[CloseCode["CLOSE_GRACEFUL"] = 4000] = "CLOSE_GRACEFUL";
+    CloseCode[CloseCode["CLOSE_CLIENT_ERROR"] = 4001] = "CLOSE_CLIENT_ERROR";
+    CloseCode[CloseCode["CLOSE_SERVER_ERROR"] = 4002] = "CLOSE_SERVER_ERROR";
+    CloseCode[CloseCode["CLOSE_CALE_MISMATCH"] = 4010] = "CLOSE_CALE_MISMATCH";
+    CloseCode[CloseCode["CLOSE_CALE_HANDSHAKE"] = 4011] = "CLOSE_CALE_HANDSHAKE";
+})(CloseCode || (CloseCode = {}));
 export class CryoServerWebsocketSession extends EventEmitter {
     remoteClient;
     remoteSocket;
@@ -43,7 +51,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
             },
             onFailure: (reason) => {
                 this.log(`Handshake failure: ${reason}`);
-                this.Destroy(1002, "Error during CALE handshake.");
+                this.Destroy(CloseCode.CLOSE_CALE_HANDSHAKE, "Error during CALE handshake.");
             }
         };
         this.handshake = new CryoHandshakeEngine(this.Client.sessionId, (buffer) => this.Send(buffer, true), CryoFrameFormatter, () => this.inc_get_ack(), handshake_events);
@@ -57,7 +65,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
                 if (use_cale)
                     await this.handshake.on_client_hello(b);
                 else
-                    this.Destroy(1002, "CALE Mismatch. The client excepts CALE encryption, which is currently disabled.");
+                    this.Destroy(CloseCode.CLOSE_CALE_MISMATCH, "CALE Mismatch. The client excepts CALE encryption, which is currently disabled.");
             },
             on_handshake_done: async (b) => this.handshake.on_client_handshake_done(b)
         });
@@ -190,14 +198,16 @@ export class CryoServerWebsocketSession extends EventEmitter {
     }
     TranslateCloseCode(code) {
         switch (code) {
-            case 1000:
+            case CloseCode.CLOSE_GRACEFUL:
                 return "Connection closed normally.";
-            case 1001:
-                return "Connection going away.";
-            case 1002:
-                return "Protocol error.";
-            case 1006:
-                return "Connection closed abnormally.";
+            case CloseCode.CLOSE_CLIENT_ERROR:
+                return "Connection closed due to a client error.";
+            case CloseCode.CLOSE_SERVER_ERROR:
+                return "Connection closed due to a server error.";
+            case CloseCode.CLOSE_CALE_MISMATCH:
+                return "Connection closed due to a mismatch in client/server CALE configuration.";
+            case CloseCode.CLOSE_CALE_HANDSHAKE:
+                return "Connection closed due to an error in the CALE handshake.";
             default:
                 return "Unspecified cause for connection closure.";
         }
@@ -205,21 +215,21 @@ export class CryoServerWebsocketSession extends EventEmitter {
     WEBSOCKET_HandleRemoteClose(code, reason) {
         const code_string = this.TranslateCloseCode(code);
         this.log(`Client ${this.remoteName} has disconnected. Code=${code_string}, reason=${reason.toString("utf8")}`);
-        this.Destroy(1000, "Connection closed gracefully.");
+        this.Destroy(CloseCode.CLOSE_GRACEFUL, "Connection closed gracefully.");
     }
     /*
     * Log hangup and destroy session
     * */
     TCPSOCKET_HandleRemoteEnd() {
         this.log(`TCP Peer '${this.remoteName}' connection closed cleanly by client session.`);
-        this.Destroy(1000, "Connection closed gracefully.");
+        this.Destroy(CloseCode.CLOSE_GRACEFUL, "Connection closed gracefully.");
     }
     /*
     * Log error and destroy session
     * */
     TCPSOCKET_HandleRemoteError(err) {
         this.log(`TCP Peer '${this.remoteName}' threw an error '${err.message}' (${err?.code})`);
-        this.Destroy(1011, "Connection closed erroneously.");
+        this.Destroy(CloseCode.CLOSE_CLIENT_ERROR, "Connection closed erroneously.");
     }
     /*
     * Send a buffer to the client
@@ -259,7 +269,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     get secure() {
         return this.use_cale && this.handshake?.state === HandshakeState.SECURE && this.crypto !== null;
     }
-    Destroy(code = 1000, message = "Closing session.") {
+    Destroy(code = 4000, message = "Closing session.") {
         this.bp_mgr?.Destroy();
         this.client_ack_tracker.Destroy();
         try {
