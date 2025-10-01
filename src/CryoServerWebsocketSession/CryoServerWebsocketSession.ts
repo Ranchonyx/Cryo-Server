@@ -17,7 +17,7 @@ import {CryoFrameRouter} from "./CryoFrameRouter.js";
 
 type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
 
-export interface CryoServerWebsocketSession {
+export interface CryoServerWebsocketSession<TStorageKeys extends string = string> {
     on<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, listener: ICryoServerWebsocketSessionEvents[U]): this;
 
     emit<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, ...args: Parameters<ICryoServerWebsocketSessionEvents[U]>): boolean;
@@ -31,7 +31,7 @@ enum CloseCode {
     CLOSE_CALE_HANDSHAKE = 4011
 }
 
-export class CryoServerWebsocketSession extends EventEmitter implements CryoServerWebsocketSession {
+export class CryoServerWebsocketSession<TStorageKeys extends string = string> extends EventEmitter implements CryoServerWebsocketSession<TStorageKeys> {
     private client_ack_tracker: AckTracker = new AckTracker();
     private readonly bp_mgr: BackpressureManager | null = null;
     private current_ack = 0;
@@ -51,6 +51,8 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
     private crypto: CryoCryptoBox | null = null;
     private handshake: CryoHandshakeEngine;
     private router: CryoFrameRouter;
+
+    private storage: Partial<Record<TStorageKeys, any>> = {};
 
     public constructor(private remoteClient: ws & SocketType,
                        private remoteSocket: Duplex,
@@ -236,11 +238,11 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         await this.Send(encodedACKMessage);
 
         const boxed_message = {value: decodedDataMessage.payload};
-        const should_emit = await CryoExtensionRegistry
+        const result = await CryoExtensionRegistry
             .get_executor(this)
             .apply_after_receive(boxed_message);
 
-        if (should_emit)
+        if (result.should_emit)
             this.emit("message-utf8", boxed_message.value);
     }
 
@@ -258,11 +260,11 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
         await this.Send(encodedACKMessage);
 
         const boxed_message = {value: decodedDataMessage.payload};
-        const should_emit = await CryoExtensionRegistry
+        const result = await CryoExtensionRegistry
             .get_executor(this)
             .apply_after_receive(boxed_message);
 
-        if (should_emit)
+        if (result.should_emit)
             this.emit("message-binary", boxed_message.value);
     }
 
@@ -369,5 +371,13 @@ export class CryoServerWebsocketSession extends EventEmitter implements CryoServ
             this.emit("closed");
 
         this.destroyed = true;
+    }
+
+    public Set(key: TStorageKeys, value: any): void {
+        this.storage[key] = value;
+    }
+
+    public Get<T>(key: TStorageKeys): T {
+        return this.storage[key] as T;
     }
 }

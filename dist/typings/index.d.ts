@@ -21,13 +21,13 @@ export declare type CryoWebsocketSessionDefaultMetadata = {
     sid: UUID;
 }
 
-export interface CryoServerWebsocketSession {
+export interface CryoServerWebsocketSession<TStorageKeys extends string = string> {
     on<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, listener: ICryoServerWebsocketSessionEvents[U]): this;
 
     emit<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, ...args: Parameters<ICryoServerWebsocketSessionEvents[U]>): boolean;
 }
 
-export declare class CryoServerWebsocketSession extends EventEmitter implements CryoServerWebsocketSession {
+export declare class CryoServerWebsocketSession<TStorageKeys extends string = string> extends EventEmitter implements CryoServerWebsocketSession<TStorageKeys> {
     public SendPing(): Promise<void>;
 
     public SendUTF8(message: string): Promise<void>;
@@ -35,6 +35,10 @@ export declare class CryoServerWebsocketSession extends EventEmitter implements 
     public SendBinary(message: Buffer): Promise<void>
 
     public Destroy(): void;
+
+    public Set(key: TStorageKeys, value: any): void;
+
+    public Get<T>(key: TStorageKeys): T;
 
     public get id(): string;
 }
@@ -85,6 +89,7 @@ export declare interface ITokenValidator {
 }
 
 type DropPolicy = "drop-oldest" | "drop-newest" | "dedupe-latest";
+
 export interface BackpressureOpts {
     highWaterMark?: number;
     lowWaterMark?: number;

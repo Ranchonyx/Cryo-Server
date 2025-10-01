@@ -181,7 +181,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
 
                 const sIdx = this.sessions.findIndex(s => s.Client.sessionId === session.Client.sessionId);
                 const retrievedSession = this.sessions.splice(sIdx, 1)[0];
-                retrievedSession.Destroy(1001, "Disconnecting session due to not responding to ping frames.");
+                retrievedSession.Destroy(4001, "Disconnecting session due to not responding to ping frames.");
 
                 continue;
             }
@@ -199,10 +199,12 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     }
 
     /**
-     * Teardown this server and all sessions, terminate all connections
+     * Teardown all sessions, all connections, timers and extensions
      */
     //noinspection JSUnusedGlobalSymbols
     public Destroy() {
+        CryoExtensionRegistry.Destroy();
+
         this.server.removeAllListeners();
         this.server.close();
 
@@ -210,7 +212,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         clearInterval(this.WebsocketHearbeatInterval);
 
         for (const session of this.sessions)
-            session.Destroy(1001, "Server shutdown.");
+            session.Destroy(4000, "Server shutdown.");
 
         this.ws_server.removeAllListeners();
         this.ws_server.close();
