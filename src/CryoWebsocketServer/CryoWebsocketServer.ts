@@ -30,7 +30,7 @@ export interface CryoWebsocketServer {
 
 export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketServer {
     private readonly ws_server: WebSocketServer;
-    private readonly WebsocketHearbeatInterval: NodeJS.Timeout;
+    private readonly WebsocketHeartbeatInterval: NodeJS.Timeout;
     private sessions: Array<CryoServerWebsocketSession> = [];
     private readonly log: DebugLoggerFunction;
 
@@ -64,7 +64,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         this.log = CreateDebugLogger("CRYO_SERVER");
 
         this.ws_server = new WebSocketServer({noServer: true});
-        this.WebsocketHearbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
+        this.WebsocketHeartbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
             .ref();
 
         this.server.on("upgrade", this.HTTPUpgradeCallback.bind(this));
@@ -96,7 +96,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         this.log(`Upgrade request from ${socketFmt} ...`);
 
-        //Doesn't actuall connect via ws or wss, just there as placeholder so I can construct an URL...
+        //Doesn't actually connect via ws or wss, just there as placeholder, so I can construct a URL...
         const full_host_url = new URL(`ws://${process.env.HOST ?? 'localhost'}${request.url!}`);
 
         const authorization = full_host_url.searchParams.get("authorization");
@@ -145,11 +145,11 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
             this.log(`Internal WS server completed upgrade for ${socketFmt}.`);
 
             //Call our callback once it's done
-            this.WSUpgradeCallback(request, socket, client, clientSessionId);
+            this.WSUpgradeCallback(request, socket, client, clientSessionId, clientBearerToken);
         });
     }
 
-    private async WSUpgradeCallback(request: http.IncomingMessage, socket: Duplex, client: WebSocket, clientSid: UUID) {
+    private async WSUpgradeCallback(request: http.IncomingMessage, socket: Duplex, client: WebSocket, clientSid: UUID, clientBearerToken: string) {
         //Assert that the socket has an "isAlive" property and if so, cast the "Client" as having this property
         //Additionally, add a "sessionId" property containing a UUIDv4
         Guard.CastAs<SocketType>(client);
@@ -159,6 +159,8 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         client.sessionId = clientSid;
 
         const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale);
+        session.Set("__TOKEN", clientBearerToken);
+
         this.sessions.push(session);
 
         session.on("closed", () => {
@@ -208,8 +210,8 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         this.server.removeAllListeners();
         this.server.close();
 
-        this.WebsocketHearbeatInterval.unref();
-        clearInterval(this.WebsocketHearbeatInterval);
+        this.WebsocketHeartbeatInterval.unref();
+        clearInterval(this.WebsocketHeartbeatInterval);
 
         for (const session of this.sessions)
             session.Destroy(4000, "Server shutdown.");

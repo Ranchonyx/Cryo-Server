@@ -36,6 +36,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     crypto = null;
     handshake;
     router;
+    storage = {};
     constructor(remoteClient, remoteSocket, remoteName, backpressure_opts, use_cale) {
         super();
         this.remoteClient = remoteClient;
@@ -173,10 +174,10 @@ export class CryoServerWebsocketSession extends EventEmitter {
             .Serialize(this.Client.sessionId, ack_id);
         await this.Send(encodedACKMessage);
         const boxed_message = { value: decodedDataMessage.payload };
-        const should_emit = await CryoExtensionRegistry
+        const result = await CryoExtensionRegistry
             .get_executor(this)
             .apply_after_receive(boxed_message);
-        if (should_emit)
+        if (result.should_emit)
             this.emit("message-utf8", boxed_message.value);
     }
     /*
@@ -190,10 +191,10 @@ export class CryoServerWebsocketSession extends EventEmitter {
             .Serialize(this.Client.sessionId, ack_id);
         await this.Send(encodedACKMessage);
         const boxed_message = { value: decodedDataMessage.payload };
-        const should_emit = await CryoExtensionRegistry
+        const result = await CryoExtensionRegistry
             .get_executor(this)
             .apply_after_receive(boxed_message);
-        if (should_emit)
+        if (result.should_emit)
             this.emit("message-binary", boxed_message.value);
     }
     TranslateCloseCode(code) {
@@ -282,5 +283,11 @@ export class CryoServerWebsocketSession extends EventEmitter {
         if (!this.destroyed)
             this.emit("closed");
         this.destroyed = true;
+    }
+    Set(key, value) {
+        this.storage[key] = value;
+    }
+    Get(key) {
+        return this.storage[key];
     }
 }

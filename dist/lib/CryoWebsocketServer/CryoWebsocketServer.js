@@ -14,7 +14,7 @@ export class CryoWebsocketServer extends EventEmitter {
     backpressure_options;
     use_cale;
     ws_server;
-    WebsocketHearbeatInterval;
+    WebsocketHeartbeatInterval;
     sessions = [];
     log;
     static async Create(pTokenValidator, options) {
@@ -40,7 +40,7 @@ export class CryoWebsocketServer extends EventEmitter {
         this.use_cale = use_cale;
         this.log = CreateDebugLogger("CRYO_SERVER");
         this.ws_server = new WebSocketServer({ noServer: true });
-        this.WebsocketHearbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
+        this.WebsocketHeartbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
             .ref();
         this.server.on("upgrade", this.HTTPUpgradeCallback.bind(this));
         this.server.listen(socketPort, () => {
@@ -65,7 +65,7 @@ export class CryoWebsocketServer extends EventEmitter {
     async HTTPUpgradeCallback(request, socket, head) {
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         this.log(`Upgrade request from ${socketFmt} ...`);
-        //Doesn't actuall connect via ws or wss, just there as placeholder so I can construct an URL...
+        //Doesn't actually connect via ws or wss, just there as placeholder, so I can construct a URL...
         const full_host_url = new URL(`ws://${process.env.HOST ?? 'localhost'}${request.url}`);
         const authorization = full_host_url.searchParams.get("authorization");
         const x_cryo_sid = full_host_url.searchParams.get("x-cryo-sid");
@@ -102,10 +102,10 @@ export class CryoWebsocketServer extends EventEmitter {
         this.ws_server.handleUpgrade(request, socket, head, (client, request) => {
             this.log(`Internal WS server completed upgrade for ${socketFmt}.`);
             //Call our callback once it's done
-            this.WSUpgradeCallback(request, socket, client, clientSessionId);
+            this.WSUpgradeCallback(request, socket, client, clientSessionId, clientBearerToken);
         });
     }
-    async WSUpgradeCallback(request, socket, client, clientSid) {
+    async WSUpgradeCallback(request, socket, client, clientSid, clientBearerToken) {
         //Assert that the socket has an "isAlive" property and if so, cast the "Client" as having this property
         //Additionally, add a "sessionId" property containing a UUIDv4
         Guard.CastAs(client);
@@ -113,6 +113,7 @@ export class CryoWebsocketServer extends EventEmitter {
         client.isAlive = true;
         client.sessionId = clientSid;
         const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale);
+        session.Set("__TOKEN", clientBearerToken);
         this.sessions.push(session);
         session.on("closed", () => {
             const s_idx = this.sessions.findIndex(s => s.id === session.id);
@@ -130,7 +131,7 @@ export class CryoWebsocketServer extends EventEmitter {
                 this.log(`Terminating dead client session ${session.Client.sessionId}`);
                 const sIdx = this.sessions.findIndex(s => s.Client.sessionId === session.Client.sessionId);
                 const retrievedSession = this.sessions.splice(sIdx, 1)[0];
-                retrievedSession.Destroy(1001, "Disconnecting session due to not responding to ping frames.");
+                retrievedSession.Destroy(4001, "Disconnecting session due to not responding to ping frames.");
                 continue;
             }
             //Also to housekeeping in the ACK tracker of each client
@@ -144,16 +145,17 @@ export class CryoWebsocketServer extends EventEmitter {
         }
     }
     /**
-     * Teardown this server and all sessions, terminate all connections
+     * Teardown all sessions, all connections, timers and extensions
      */
     //noinspection JSUnusedGlobalSymbols
     Destroy() {
+        CryoExtensionRegistry.Destroy();
         this.server.removeAllListeners();
         this.server.close();
-        this.WebsocketHearbeatInterval.unref();
-        clearInterval(this.WebsocketHearbeatInterval);
+        this.WebsocketHeartbeatInterval.unref();
+        clearInterval(this.WebsocketHeartbeatInterval);
         for (const session of this.sessions)
-            session.Destroy(1001, "Server shutdown.");
+            session.Destroy(4000, "Server shutdown.");
         this.ws_server.removeAllListeners();
         this.ws_server.close();
     }
