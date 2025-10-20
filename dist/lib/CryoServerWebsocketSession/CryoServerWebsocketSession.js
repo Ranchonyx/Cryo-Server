@@ -100,9 +100,11 @@ export class CryoServerWebsocketSession extends EventEmitter {
     async SendUTF8(message) {
         const new_ack_id = this.inc_get_ack();
         const boxed_message = { value: message };
-        await CryoExtensionRegistry
+        const result = await CryoExtensionRegistry
             .get_executor(this)
             .apply_before_send(boxed_message);
+        if (!result.should_emit)
+            return;
         const encodedUtf8DataMessage = this.utf8_formatter
             .Serialize(this.Client.sessionId, new_ack_id, boxed_message.value);
         this.client_ack_tracker.Track(new_ack_id, {
@@ -119,9 +121,11 @@ export class CryoServerWebsocketSession extends EventEmitter {
     async SendBinary(message) {
         const new_ack_id = this.inc_get_ack();
         const boxed_message = { value: message };
-        await CryoExtensionRegistry
+        const result = await CryoExtensionRegistry
             .get_executor(this)
             .apply_before_send(boxed_message);
+        if (!result.should_emit)
+            return;
         const encodedBinaryDataMessage = this.binary_formatter
             .Serialize(this.Client.sessionId, new_ack_id, boxed_message.value);
         this.client_ack_tracker.Track(new_ack_id, {

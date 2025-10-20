@@ -45,7 +45,7 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
 
 type Box<T> = { value: T };
 
-export interface CryoExtension {
+export interface ICryoExtension {
 
     /**
      * Executed before a binary message is sent to the client session
@@ -98,7 +98,7 @@ export interface BackpressureOpts {
     dropPolicy?: DropPolicy;
 }
 
-export interface CryoWebsocketServerOptions {
+export interface ICryoWebsocketServerOptions {
     keepAliveIntervalMs?: number;
     port?: number;
     backpressure?: BackpressureOpts;
@@ -120,7 +120,7 @@ export declare interface CryoWebsocketServer {
 export declare class CryoWebsocketServer extends EventEmitter implements CryoWebsocketServer {
     public Destroy(): void;
 
-    public RegisterExtension(extension: CryoExtension): void;
+    public RegisterExtension(extension: ICryoExtension): void;
 
     public get http_server(): http.Server;
 }
@@ -130,4 +130,4 @@ export declare class CryoWebsocketServer extends EventEmitter implements CryoWeb
  * @param pTokenValidator - An implementation of the {@link ITokenValidator} interface to validate incoming websocket connections
  * @param options - Optional arguments, {@link CryoWebsocketServerOptions}
  * */
-export declare function cryo(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions): Promise<CryoWebsocketServer>;
+export declare function cryo(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions): Promise<CryoWebsocketServer>;

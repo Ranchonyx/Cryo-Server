@@ -1,4 +1,4 @@
-import {CryoExtension} from "./CryoExtension.js";
+import {ICryoExtension} from "./CryoExtension.js";
 import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 
@@ -11,7 +11,7 @@ class CryoExtensionExecutor {
     public constructor(private session: CryoServerWebsocketSession) {
     }
 
-    private async execute_if_present(extension: CryoExtension, handler_name: Exclude<keyof CryoExtension, "name">, message: Box<Buffer | string>): Promise<ExtensionFunctionResult> {
+    private async execute_if_present(extension: ICryoExtension, handler_name: Exclude<keyof ICryoExtension, "name">, message: Box<Buffer | string>): Promise<ExtensionFunctionResult> {
         if (!extension[handler_name])
             return {should_emit: true};
 
@@ -30,6 +30,7 @@ class CryoExtensionExecutor {
     public async apply_before_send(message: Box<Buffer | string>): Promise<ExtensionFunctionResult> {
         let before_send_result: ExtensionFunctionResult = {should_emit: true};
         log(`Running before_send handler, message: `, message);
+
         for (const extension of CryoExtensionRegistry.extensions) {
             if (typeof message.value === "string") {
                 before_send_result = await this.execute_if_present(extension, "before_send_utf8", message);
@@ -61,13 +62,13 @@ class CryoExtensionExecutor {
 
 //noinspection JSUnusedGlobalSymbols
 export class CryoExtensionRegistry {
-    public static extensions: CryoExtension[] = [];
+    public static extensions: ICryoExtension[] = [];
 
     public static get_executor(session: CryoServerWebsocketSession): CryoExtensionExecutor {
         return new CryoExtensionExecutor(session);
     }
 
-    public static register(extension: CryoExtension): void {
+    public static register(extension: ICryoExtension): void {
         const maybe_index = this.extensions.findIndex(existing_extension => existing_extension.name === extension.name);
         if(maybe_index >= 0)
             throw new Error(`Extension '${extension.name}' is already registered!`);
@@ -76,8 +77,8 @@ export class CryoExtensionRegistry {
     }
 
     public static unregister(extension: string): void;
-    public static unregister(extension: CryoExtension): void;
-    public static unregister(extension: string | CryoExtension): void {
+    public static unregister(extension: ICryoExtension): void;
+    public static unregister(extension: string | ICryoExtension): void {
         const extension_name = typeof extension === "string" ? extension : extension.name;
         const maybe_index = this.extensions.findIndex(extension => extension.name === extension_name);
 

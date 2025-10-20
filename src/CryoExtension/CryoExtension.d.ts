@@ -1,7 +1,7 @@
 import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 
 type Box<T> = {value: T}
-export interface CryoExtension {
+export interface ICryoExtension {
 
     /**
      * Executed before a binary message is sent to the client session

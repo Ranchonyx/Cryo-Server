@@ -11,12 +11,12 @@ import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 import {ITokenValidator} from "./types/ITokenValidator.js";
 import {
     CryoWebsocketServerEvents,
-    CryoWebsocketServerOptions,
+    ICryoWebsocketServerOptions,
     FilledBackpressureOpts
 } from "./types/CryoWebsocketServer.js";
 import Guard from "../Common/Util/Guard.js";
 import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
-import {CryoExtension} from "../CryoExtension/CryoExtension.js";
+import {ICryoExtension} from "../CryoExtension/CryoExtension.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
 import {OverwriteUnset} from "../Common/Util/OverwriteUnset.js";
 
@@ -34,7 +34,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     private sessions: Array<CryoServerWebsocketSession> = [];
     private readonly log: DebugLoggerFunction;
 
-    public static async Create(pTokenValidator: ITokenValidator, options?: CryoWebsocketServerOptions) {
+    public static async Create(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions) {
         const keepAliveInterval = options?.keepAliveIntervalMs ?? 15000;
         const sockPort = options?.port ?? 8080;
         const use_cale = options?.use_cale ?? true;
@@ -204,7 +204,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
      * Teardown all sessions, all connections, timers and extensions
      */
     //noinspection JSUnusedGlobalSymbols
-    public Destroy() {
+    public Destroy(): void {
         CryoExtensionRegistry.Destroy();
 
         this.server.removeAllListeners();
@@ -224,7 +224,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
      * Register a server-side cryo extension
      */
     //noinspection JSUnusedGlobalSymbols
-    public RegisterExtension(extension: CryoExtension): void {
+    public RegisterExtension(extension: ICryoExtension): void {
         CryoExtensionRegistry.register(extension);
     }
 }

@@ -1,6 +1,6 @@
 import {CryoServerWebsocketSession} from "../../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 
-export interface CryoWebsocketServerOptions {
+export interface ICryoWebsocketServerOptions {
     keepAliveIntervalMs?: number;
     port?: number;
     backpressure?: BackpressureOpts;
