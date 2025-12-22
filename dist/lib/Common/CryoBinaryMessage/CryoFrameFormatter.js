@@ -89,11 +89,15 @@ class UTF8FrameFormatter {
         };
     }
     Serialize(sid, ack, payload) {
-        const msg_buf = Buffer.alloc(16 + 4 + 1 + (payload?.length || 4));
+        const msg_buf = Buffer.alloc(16 + 4 + 1 + (payload ? Buffer.from(payload).byteLength : 4));
         const sid_buf = BufferUtil.sidToBuffer(sid);
+        //Write sid to msg_buf at 0..16
         sid_buf.copy(msg_buf, 0);
+        //Write ack number at 16..20
         msg_buf.writeUInt32BE(ack, 16);
+        //Write message type at 20..21
         msg_buf.writeUint8(BinaryMessageType.UTF8DATA, 20);
+        //Write paylaod at 21..len(payload)
         msg_buf.write(payload || "null", 21);
         return msg_buf;
     }
