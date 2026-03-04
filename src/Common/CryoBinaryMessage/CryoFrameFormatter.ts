@@ -180,7 +180,7 @@ class UTF8FrameFormatter implements CryoBinaryFrameFormatter<UTF8DataMessage> {
         //Write message type at 20..21
         msg_buf.writeUint8(BinaryMessageType.UTF8DATA, 20);
 
-        //Write paylaod at 21..len(payload)
+        //Write payload at 21..len(payload)
         msg_buf.write(payload || "null", 21);
 
         return msg_buf;

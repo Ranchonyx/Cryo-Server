@@ -166,4 +166,10 @@ export class CryoWebsocketServer extends EventEmitter {
     RegisterExtension(extension) {
         CryoExtensionRegistry.register(extension);
     }
+    /**
+     * Accessor for underlying http(s)-server
+     * */
+    get http_server() {
+        return this.server;
+    }
 }

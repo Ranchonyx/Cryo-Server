@@ -227,4 +227,11 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     public RegisterExtension(extension: ICryoExtension): void {
         CryoExtensionRegistry.register(extension);
     }
+
+    /**
+     * Accessor for underlying http(s)-server
+     * */
+    public get http_server(): http.Server | https.Server {
+        return this.server;
+    }
 }
