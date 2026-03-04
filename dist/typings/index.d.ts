@@ -2,6 +2,7 @@ import {EventEmitter} from "node:events";
 import {UUID} from "node:crypto";
 import {Store} from "express-session";
 import http from "node:http";
+import {SSLOptions} from "../../src/CryoWebsocketServer/types/CryoWebsocketServer";
 
 /**
  * CryoServerWebsocketSession typings
@@ -98,11 +99,17 @@ export interface BackpressureOpts {
     dropPolicy?: DropPolicy;
 }
 
+export interface SSLOptions {
+    key: Buffer;
+    cert: Buffer;
+}
+
 export interface ICryoWebsocketServerOptions {
     keepAliveIntervalMs?: number;
     port?: number;
     backpressure?: BackpressureOpts;
     use_cale?: boolean;
+    ssl?: SSLOptions;
 }
 
 export declare interface CryoWebsocketServerEvents {
