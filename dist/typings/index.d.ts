@@ -137,4 +137,4 @@ export declare class CryoWebsocketServer extends EventEmitter implements CryoWeb
  * @param pTokenValidator - An implementation of the {@link ITokenValidator} interface to validate incoming websocket connections
  * @param options - Optional arguments, {@link CryoWebsocketServerOptions}
  * */
-export declare function cryo(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions): Promise<CryoWebsocketServer>;
+export declare function cryo(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions): CryoWebsocketServer;

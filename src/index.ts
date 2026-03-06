@@ -8,6 +8,6 @@ import {CryoWebsocketServer} from "./CryoWebsocketServer/CryoWebsocketServer.js"
  * @param options - Optional arguments, {@link ICryoWebsocketServerOptions}
  * */
 //noinspection JSUnusedGlobalSymbols
-export async function cryo(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions) {
+export function cryo(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions) {
     return CryoWebsocketServer.Create(pTokenValidator, options);
 }

@@ -30,11 +30,11 @@ export interface CryoWebsocketServer {
 
 export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketServer {
     private readonly ws_server: WebSocketServer;
-    private readonly WebsocketHeartbeatInterval: NodeJS.Timeout;
+    private readonly WebsocketHeartbeatInterval: ReturnType<typeof setTimeout>;
     private sessions: Array<CryoServerWebsocketSession> = [];
     private readonly log: DebugLoggerFunction;
 
-    public static async Create(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions) {
+    public static Create(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions) {
         const keepAliveInterval = options?.keepAliveIntervalMs ?? 15000;
         const sockPort = options?.port ?? 8080;
         const use_cale = options?.use_cale ?? true;
