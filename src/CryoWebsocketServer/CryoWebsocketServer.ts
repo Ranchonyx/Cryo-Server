@@ -1,6 +1,6 @@
 import https from "https";
 import http from "node:http";
-import {UUID} from "node:crypto";
+import {randomUUID, UUID} from "node:crypto";
 import {WebSocket, WebSocketServer} from "ws"
 import {clearInterval, setInterval} from "node:timers";
 
@@ -20,7 +20,7 @@ import {ICryoExtension} from "../CryoExtension/CryoExtension.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
 import {OverwriteUnset} from "../Common/Util/OverwriteUnset.js";
 
-type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
+type SocketType = Duplex & { isAlive: boolean, sessionId: UUID, _socket: Duplex };
 
 export interface CryoWebsocketServer {
     on<U extends keyof CryoWebsocketServerEvents>(event: U, listener: CryoWebsocketServerEvents[U]): this;
@@ -160,6 +160,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
 
         const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale);
         session.Set("__TOKEN", clientBearerToken);
+        session.Set("__TYPE", "client");
 
         this.sessions.push(session);
 
@@ -198,6 +199,33 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
             session.Client.isAlive = false;
             await session.Ping();
         }
+    }
+
+    /**
+     * Create a session with another cryo server
+     * */
+    public async ConnectPeer(host: string, bearer: string): Promise<CryoServerWebsocketSession> {
+        const url = new URL(host);
+        const peerSid = randomUUID();
+        url.searchParams.set("authorization", `Bearer ${bearer}`);
+        url.searchParams.set("x-cryo-sid", peerSid);
+
+        const peer = new WebSocket(url);
+        return new Promise<CryoServerWebsocketSession>((resolve, reject) => {
+            peer.on("open", () => {
+                Guard.CastAs<SocketType>(peer);
+                peer.isAlive = true;
+                peer.sessionId = peerSid;
+
+                const session = new CryoServerWebsocketSession(peer, peer._socket, `peer:${url}`, this.backpressure_options, this.use_cale);
+                session.Set("__TYPE", "peer");
+
+                this.sessions.push(session);
+                resolve(session);
+            });
+
+            peer.on("error", reject)
+        });
     }
 
     /**

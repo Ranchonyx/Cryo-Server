@@ -1,6 +1,7 @@
 import https from "https";
 import http from "node:http";
-import { WebSocketServer } from "ws";
+import { randomUUID } from "node:crypto";
+import { WebSocket, WebSocketServer } from "ws";
 import { clearInterval, setInterval } from "node:timers";
 import { EventEmitter } from "node:events";
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
@@ -114,6 +115,7 @@ export class CryoWebsocketServer extends EventEmitter {
         client.sessionId = clientSid;
         const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale);
         session.Set("__TOKEN", clientBearerToken);
+        session.Set("__TYPE", "client");
         this.sessions.push(session);
         session.on("closed", () => {
             const s_idx = this.sessions.findIndex(s => s.id === session.id);
@@ -143,6 +145,28 @@ export class CryoWebsocketServer extends EventEmitter {
             session.Client.isAlive = false;
             await session.Ping();
         }
+    }
+    /**
+     * Create a session with another cryo server
+     * */
+    async ConnectPeer(host, bearer) {
+        const url = new URL(host);
+        const peerSid = randomUUID();
+        url.searchParams.set("authorization", `Bearer ${bearer}`);
+        url.searchParams.set("x-cryo-sid", peerSid);
+        const peer = new WebSocket(url);
+        return new Promise((resolve, reject) => {
+            peer.on("open", () => {
+                Guard.CastAs(peer);
+                peer.isAlive = true;
+                peer.sessionId = peerSid;
+                const session = new CryoServerWebsocketSession(peer, peer._socket, `peer:${url}`, this.backpressure_options, this.use_cale);
+                session.Set("__TYPE", "peer");
+                this.sessions.push(session);
+                resolve(session);
+            });
+            peer.on("error", reject);
+        });
     }
     /**
      * Teardown all sessions, all connections, timers and extensions

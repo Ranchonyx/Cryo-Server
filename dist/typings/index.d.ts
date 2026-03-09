@@ -143,6 +143,8 @@ export declare class CryoWebsocketServer extends EventEmitter implements CryoWeb
 
     public GetExtension(extensionName: string): ICryoExtension | null;
 
+    public ConnectPeer(host: string, bearer: string): Promise<CryoServerWebsocketSession>;
+
     public get http_server(): http.Server;
 }
 

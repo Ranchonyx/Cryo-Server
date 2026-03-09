@@ -115,7 +115,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     }
 
     private inc_get_ack(): number {
-        if (this.current_ack + 1 > (2 ** 32 - 1))
+        if (this.current_ack + 1 > 0xffffffff)
             this.current_ack = 0;
 
         return this.current_ack++;

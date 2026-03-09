@@ -80,7 +80,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
             this.log("CALE disabled, running in unencrypted mode.");
     }
     inc_get_ack() {
-        if (this.current_ack + 1 > (2 ** 32 - 1))
+        if (this.current_ack + 1 > 0xffffffff)
             this.current_ack = 0;
         return this.current_ack++;
     }
