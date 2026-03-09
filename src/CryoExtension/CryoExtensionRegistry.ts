@@ -20,7 +20,7 @@ class CryoExtensionExecutor {
             ///@ts-expect-error
             extension[handler_name](this.session, message).then(should_emit => {
                 resolve({should_emit});
-            }).catch(ex => {
+            }).catch((ex: unknown) => {
                 log(`Call to '${handler_name}' of extension '${extension.name}' threw an error`, ex);
                 resolve({should_emit: true, error: ex});
             })

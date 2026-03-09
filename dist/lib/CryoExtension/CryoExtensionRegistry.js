@@ -12,8 +12,8 @@ class CryoExtensionExecutor {
         return new Promise((resolve) => {
             ///@ts-expect-error
             extension[handler_name](this.session, message).then(should_emit => {
-                return { should_emit };
-            }).catch(ex => {
+                resolve({ should_emit });
+            }).catch((ex) => {
                 log(`Call to '${handler_name}' of extension '${extension.name}' threw an error`, ex);
                 resolve({ should_emit: true, error: ex });
             });
@@ -65,7 +65,7 @@ export class CryoExtensionRegistry {
         const maybe_index = this.extensions.findIndex(extension => extension.name === extension_name);
         if (maybe_index < 0)
             return;
-        log(`Unregisted extension '${this.extensions[maybe_index].name}'`);
+        log(`Unregistered extension '${this.extensions[maybe_index].name}'`);
         this.extensions.splice(maybe_index, 1);
     }
     static Destroy() {

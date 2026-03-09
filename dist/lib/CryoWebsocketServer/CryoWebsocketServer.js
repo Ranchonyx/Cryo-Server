@@ -156,6 +156,7 @@ export class CryoWebsocketServer extends EventEmitter {
         clearInterval(this.WebsocketHeartbeatInterval);
         for (const session of this.sessions)
             session.Destroy(4000, "Server shutdown.");
+        CryoExtensionRegistry.Destroy();
         this.ws_server.removeAllListeners();
         this.ws_server.close();
     }
@@ -165,6 +166,23 @@ export class CryoWebsocketServer extends EventEmitter {
     //noinspection JSUnusedGlobalSymbols
     RegisterExtension(extension) {
         CryoExtensionRegistry.register(extension);
+        extension.on_register(this);
+    }
+    /**
+     * Unregisters a server-side cryo-extension
+     * */
+    //noinspection JSUnusedGlobalSymbols
+    UnregisterExtension(extension) {
+        extension.on_unregister(this);
+        CryoExtensionRegistry.unregister(extension);
+    }
+    /**
+     * Gets a server-side cryo extension by its name
+     * */
+    //noinspection JSUnusedGlobalSymbols
+    GetExtension(extensionName) {
+        const extIdx = CryoExtensionRegistry.extensions.findIndex(ext => ext.name === extensionName);
+        return extIdx < 0 ? null : CryoExtensionRegistry.extensions[extIdx];
     }
     /**
      * Accessor for underlying http(s)-server
