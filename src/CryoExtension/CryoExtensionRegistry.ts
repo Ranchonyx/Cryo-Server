@@ -8,7 +8,7 @@ type ExtensionFunctionResult = { should_emit: boolean, error?: unknown };
 const log = CreateDebugLogger("CRYO_EXTENSION");
 
 class CryoExtensionExecutor {
-    public constructor(private session: CryoServerWebsocketSession) {
+    public constructor(private session: CryoServerWebsocketSession, private registry: CryoExtensionRegistry) {
     }
 
     private async execute_if_present(extension: ICryoExtension, handler_name: Exclude<keyof ICryoExtension, "name">, message: Box<Buffer | string>): Promise<ExtensionFunctionResult> {
@@ -31,7 +31,7 @@ class CryoExtensionExecutor {
         let before_send_result: ExtensionFunctionResult = {should_emit: true};
         log(`Running before_send handler, message: `, message);
 
-        for (const extension of CryoExtensionRegistry.extensions) {
+        for (const extension of this.registry.extensions) {
             if (typeof message.value === "string") {
                 before_send_result = await this.execute_if_present(extension, "before_send_utf8", message);
             } else {
@@ -47,7 +47,7 @@ class CryoExtensionExecutor {
         let after_receive_result: ExtensionFunctionResult = {should_emit: true};
         log(`Running after_receive handler, message: `, message);
 
-        for (const extension of CryoExtensionRegistry.extensions) {
+        for (const extension of this.registry.extensions) {
             if (typeof message.value === "string") {
                 after_receive_result = await this.execute_if_present(extension, "on_receive_utf8", message);
             } else {
@@ -62,13 +62,13 @@ class CryoExtensionExecutor {
 
 //noinspection JSUnusedGlobalSymbols
 export class CryoExtensionRegistry {
-    public static extensions: ICryoExtension[] = [];
+    public extensions: ICryoExtension[] = [];
 
-    public static get_executor(session: CryoServerWebsocketSession): CryoExtensionExecutor {
-        return new CryoExtensionExecutor(session);
+    public get_executor(session: CryoServerWebsocketSession): CryoExtensionExecutor {
+        return new CryoExtensionExecutor(session, this);
     }
 
-    public static register(extension: ICryoExtension): void {
+    public register(extension: ICryoExtension): void {
         const maybe_index = this.extensions.findIndex(existing_extension => existing_extension.name === extension.name);
         if (maybe_index >= 0)
             throw new Error(`Extension '${extension.name}' is already registered!`);
@@ -76,9 +76,9 @@ export class CryoExtensionRegistry {
         this.extensions.push(extension);
     }
 
-    public static unregister(extension: string): void;
-    public static unregister(extension: ICryoExtension): void;
-    public static unregister(extension: string | ICryoExtension): void {
+    public unregister(extension: string): void;
+    public unregister(extension: ICryoExtension): void;
+    public unregister(extension: string | ICryoExtension): void {
         const extension_name = typeof extension === "string" ? extension : extension.name;
         const maybe_index = this.extensions.findIndex(extension => extension.name === extension_name);
 
@@ -89,8 +89,8 @@ export class CryoExtensionRegistry {
         this.extensions.splice(maybe_index, 1);
     }
 
-    public static Destroy() {
-        for (const extension of CryoExtensionRegistry.extensions) {
+    public Destroy() {
+        for (const extension of this.extensions) {
             this.unregister(extension);
         }
     }

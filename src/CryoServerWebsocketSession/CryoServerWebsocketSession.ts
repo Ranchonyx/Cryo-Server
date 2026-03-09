@@ -58,7 +58,9 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
                        private remoteSocket: Duplex,
                        private remoteName: string,
                        backpressure_opts: FilledBackpressureOpts,
-                       private use_cale: boolean) {
+                       private use_cale: boolean,
+                       private extensionRegistry: CryoExtensionRegistry
+    ) {
         super();
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
 
@@ -142,7 +144,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         const new_ack_id = this.inc_get_ack();
         const boxed_message = {value: message};
 
-        const result = await CryoExtensionRegistry
+        const result = await this.extensionRegistry
             .get_executor(this)
             .apply_before_send(boxed_message);
 
@@ -170,7 +172,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         const new_ack_id = this.inc_get_ack();
         const boxed_message = {value: message};
 
-        const result = await CryoExtensionRegistry
+        const result = await this.extensionRegistry
             .get_executor(this)
             .apply_before_send(boxed_message);
 
@@ -244,7 +246,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         await this.Send(encodedACKMessage);
 
         const boxed_message = {value: decodedDataMessage.payload};
-        const result = await CryoExtensionRegistry
+        const result = await this.extensionRegistry
             .get_executor(this)
             .apply_after_receive(boxed_message);
 
@@ -266,7 +268,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         await this.Send(encodedACKMessage);
 
         const boxed_message = {value: decodedDataMessage.payload};
-        const result = await CryoExtensionRegistry
+        const result = await this.extensionRegistry
             .get_executor(this)
             .apply_after_receive(boxed_message);
 
