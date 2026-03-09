@@ -30,7 +30,7 @@ export interface CryoWebsocketServer {
 
 export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketServer {
     private readonly ws_server: WebSocketServer;
-    private readonly WebsocketHeartbeatInterval: ReturnType<typeof setTimeout>;
+    private readonly WebsocketHeartbeatInterval: ReturnType<typeof setInterval>;
     private sessions: Array<CryoServerWebsocketSession> = [];
     private readonly log: DebugLoggerFunction;
 
@@ -216,6 +216,8 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         for (const session of this.sessions)
             session.Destroy(4000, "Server shutdown.");
 
+        CryoExtensionRegistry.Destroy();
+
         this.ws_server.removeAllListeners();
         this.ws_server.close();
     }
@@ -226,6 +228,26 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     //noinspection JSUnusedGlobalSymbols
     public RegisterExtension(extension: ICryoExtension): void {
         CryoExtensionRegistry.register(extension);
+        extension.on_register(this);
+    }
+
+    /**
+     * Unregisters a server-side cryo-extension
+     * */
+    //noinspection JSUnusedGlobalSymbols
+    public UnregisterExtension(extension: ICryoExtension): void {
+        extension.on_unregister(this);
+        CryoExtensionRegistry.unregister(extension);
+    }
+
+    /**
+     * Gets a server-side cryo extension by its name
+     * */
+    //noinspection JSUnusedGlobalSymbols
+    public GetExtension(extensionName: string): ICryoExtension | null {
+        const extIdx = CryoExtensionRegistry.extensions.findIndex(ext => ext.name === extensionName);
+
+        return extIdx < 0 ? null : CryoExtensionRegistry.extensions[extIdx];
     }
 
     /**

@@ -1,8 +1,6 @@
 import {EventEmitter} from "node:events";
 import {UUID} from "node:crypto";
-import {Store} from "express-session";
 import http from "node:http";
-import {SSLOptions} from "../../src/CryoWebsocketServer/types/CryoWebsocketServer";
 
 /**
  * CryoServerWebsocketSession typings
@@ -47,6 +45,18 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
 type Box<T> = { value: T };
 
 export interface ICryoExtension {
+
+    /**
+     * Executed upon registration of the extension on the server
+     * @param server - Reference to the running cryo websocket server
+     * */
+    on_register(server: CryoWebsocketServer): void;
+
+    /**
+     * Executed upon unregistration of the extension on the server
+     * @param server - Reference to the running cryo websocket server
+     * */
+    on_unregister(server: CryoWebsocketServer): void;
 
     /**
      * Executed before a binary message is sent to the client session
@@ -128,6 +138,10 @@ export declare class CryoWebsocketServer extends EventEmitter implements CryoWeb
     public Destroy(): void;
 
     public RegisterExtension(extension: ICryoExtension): void;
+
+    public UnregisterExtension(extension: ICryoExtension): void;
+
+    public GetExtension(extensionName: string): ICryoExtension | null;
 
     public get http_server(): http.Server;
 }

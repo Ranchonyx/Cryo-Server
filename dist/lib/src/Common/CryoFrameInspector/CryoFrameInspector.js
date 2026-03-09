@@ -1,0 +1,21 @@
+import CryoBinaryFrameFormatter from "../CryoBinaryMessage/CryoFrameFormatter.js";
+const typeToStringMap = {
+    0: "ack",
+    1: "error",
+    2: "ping/pong",
+    3: "utf8data",
+    4: "binarydata",
+    5: "server_hello",
+    6: "client_hello",
+    7: "handshake_done",
+};
+export class CryoFrameInspector {
+    static Inspect(message, encoding = "utf8") {
+        const sid = CryoBinaryFrameFormatter.GetSid(message);
+        const ack = CryoBinaryFrameFormatter.GetAck(message);
+        const type = CryoBinaryFrameFormatter.GetType(message);
+        const type_str = typeToStringMap[type] || "unknown";
+        const payload = CryoBinaryFrameFormatter.GetPayload(message, encoding);
+        return `[${sid},${ack},${type_str},[${payload}]]`;
+    }
+}

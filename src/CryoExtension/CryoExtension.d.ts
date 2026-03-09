@@ -1,7 +1,21 @@
 import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
+import {CryoWebsocketServer} from "../CryoWebsocketServer/CryoWebsocketServer.js";
 
-type Box<T> = {value: T}
+type Box<T> = { value: T }
+
 export interface ICryoExtension {
+
+    /**
+     * Executed upon registration of the extension on the server
+     * @param server - Reference to the running cryo websocket server
+     * */
+    on_register(server: CryoWebsocketServer): void;
+
+    /**
+     * Executed upon unregistration of the extension on the server
+     * @param server - Reference to the running cryo websocket server
+     * */
+    on_unregister(server: CryoWebsocketServer): void;
 
     /**
      * Executed before a binary message is sent to the client session
