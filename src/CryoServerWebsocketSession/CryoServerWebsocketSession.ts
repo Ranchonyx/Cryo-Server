@@ -192,16 +192,20 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     }
 
     /*
-    * Respond to PONG frames and set the client to be alive
+    * Respond to PING & PONG frames and set the client to be alive
     * */
     private async HandlePingPongMessage(message: Buffer): Promise<void> {
         const decodedPingPongMessage = this.ping_pong_formatter
             .Deserialize(message);
 
-        if (decodedPingPongMessage.payload !== "pong")
-            return;
-
-        this.Client.isAlive = true;
+        //A peer is pinging us, play nice and respond
+        if (decodedPingPongMessage.payload === "ping") {
+            const outgoingPong = this.ping_pong_formatter.Serialize(this.Client.sessionId, decodedPingPongMessage.ack, "pong");
+            await this.Send(outgoingPong);
+        } else {
+            //A normal client responded to our ping
+            this.Client.isAlive = true;
+        }
     }
 
     /*

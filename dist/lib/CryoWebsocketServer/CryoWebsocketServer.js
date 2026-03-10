@@ -14,6 +14,7 @@ export class CryoWebsocketServer extends EventEmitter {
     tokenValidator;
     backpressure_options;
     use_cale;
+    extensionRegistry;
     ws_server;
     WebsocketHeartbeatInterval;
     sessions = [];
@@ -33,12 +34,13 @@ export class CryoWebsocketServer extends EventEmitter {
         });
         return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled, use_cale);
     }
-    constructor(server, tokenValidator, keepAliveInterval, socketPort, backpressure_options, use_cale = true) {
+    constructor(server, tokenValidator, keepAliveInterval, socketPort, backpressure_options, use_cale = true, extensionRegistry = new CryoExtensionRegistry()) {
         super();
         this.server = server;
         this.tokenValidator = tokenValidator;
         this.backpressure_options = backpressure_options;
         this.use_cale = use_cale;
+        this.extensionRegistry = extensionRegistry;
         this.log = CreateDebugLogger("CRYO_SERVER");
         this.ws_server = new WebSocketServer({ noServer: true });
         this.WebsocketHeartbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
@@ -113,7 +115,7 @@ export class CryoWebsocketServer extends EventEmitter {
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         client.isAlive = true;
         client.sessionId = clientSid;
-        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale);
+        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale, this.extensionRegistry);
         session.Set("__TOKEN", clientBearerToken);
         session.Set("__TYPE", "client");
         this.sessions.push(session);
@@ -149,6 +151,7 @@ export class CryoWebsocketServer extends EventEmitter {
     /**
      * Create a session with another cryo server
      * */
+    //noinspection JSUnusedGlobalSymbols
     async ConnectPeer(host, bearer) {
         const url = new URL(host);
         const peerSid = randomUUID();
@@ -160,7 +163,7 @@ export class CryoWebsocketServer extends EventEmitter {
                 Guard.CastAs(peer);
                 peer.isAlive = true;
                 peer.sessionId = peerSid;
-                const session = new CryoServerWebsocketSession(peer, peer._socket, `peer:${url}`, this.backpressure_options, this.use_cale);
+                const session = new CryoServerWebsocketSession(peer, peer._socket, `peer:${url}`, this.backpressure_options, this.use_cale, this.extensionRegistry);
                 session.Set("__TYPE", "peer");
                 this.sessions.push(session);
                 resolve(session);
@@ -173,14 +176,13 @@ export class CryoWebsocketServer extends EventEmitter {
      */
     //noinspection JSUnusedGlobalSymbols
     Destroy() {
-        CryoExtensionRegistry.Destroy();
+        this.extensionRegistry.Destroy();
         this.server.removeAllListeners();
         this.server.close();
         this.WebsocketHeartbeatInterval.unref();
         clearInterval(this.WebsocketHeartbeatInterval);
         for (const session of this.sessions)
             session.Destroy(4000, "Server shutdown.");
-        CryoExtensionRegistry.Destroy();
         this.ws_server.removeAllListeners();
         this.ws_server.close();
     }
@@ -189,7 +191,7 @@ export class CryoWebsocketServer extends EventEmitter {
      */
     //noinspection JSUnusedGlobalSymbols
     RegisterExtension(extension) {
-        CryoExtensionRegistry.register(extension);
+        this.extensionRegistry.register(extension);
         extension.on_register(this);
     }
     /**
@@ -198,19 +200,20 @@ export class CryoWebsocketServer extends EventEmitter {
     //noinspection JSUnusedGlobalSymbols
     UnregisterExtension(extension) {
         extension.on_unregister(this);
-        CryoExtensionRegistry.unregister(extension);
+        this.extensionRegistry.unregister(extension);
     }
     /**
      * Gets a server-side cryo extension by its name
      * */
     //noinspection JSUnusedGlobalSymbols
     GetExtension(extensionName) {
-        const extIdx = CryoExtensionRegistry.extensions.findIndex(ext => ext.name === extensionName);
-        return extIdx < 0 ? null : CryoExtensionRegistry.extensions[extIdx];
+        const extIdx = this.extensionRegistry.extensions.findIndex(ext => ext.name === extensionName);
+        return extIdx < 0 ? null : this.extensionRegistry.extensions[extIdx];
     }
     /**
      * Accessor for underlying http(s)-server
      * */
+    //noinspection JSUnusedGlobalSymbols
     get http_server() {
         return this.server;
     }

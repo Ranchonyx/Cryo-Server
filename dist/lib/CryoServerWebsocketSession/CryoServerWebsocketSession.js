@@ -3,7 +3,6 @@ import CryoBinaryFrameFormatter from "../Common/CryoBinaryMessage/CryoFrameForma
 import CryoFrameFormatter, { BinaryMessageType } from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 import { AckTracker } from "../Common/AckTracker/AckTracker.js";
-import { CryoExtensionRegistry } from "../CryoExtension/CryoExtensionRegistry.js";
 import { BackpressureManager } from "../Common/BackpressureManager/BackpressureManager.js";
 import { CryoCryptoBox } from "./CryoCryptoBox.js";
 import { CryoHandshakeEngine, HandshakeState } from "./CryoHandshakeEngine.js";
@@ -21,6 +20,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     remoteSocket;
     remoteName;
     use_cale;
+    extensionRegistry;
     client_ack_tracker = new AckTracker();
     bp_mgr = null;
     current_ack = 0;
@@ -37,12 +37,13 @@ export class CryoServerWebsocketSession extends EventEmitter {
     handshake;
     router;
     storage = {};
-    constructor(remoteClient, remoteSocket, remoteName, backpressure_opts, use_cale) {
+    constructor(remoteClient, remoteSocket, remoteName, backpressure_opts, use_cale, extensionRegistry) {
         super();
         this.remoteClient = remoteClient;
         this.remoteSocket = remoteSocket;
         this.remoteName = remoteName;
         this.use_cale = use_cale;
+        this.extensionRegistry = extensionRegistry;
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
         this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy, CreateDebugLogger(`CRYO_BACKPRESSURE`));
         const handshake_events = {
@@ -100,7 +101,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     async SendUTF8(message) {
         const new_ack_id = this.inc_get_ack();
         const boxed_message = { value: message };
-        const result = await CryoExtensionRegistry
+        const result = await this.extensionRegistry
             .get_executor(this)
             .apply_before_send(boxed_message);
         if (!result.should_emit)
@@ -121,7 +122,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     async SendBinary(message) {
         const new_ack_id = this.inc_get_ack();
         const boxed_message = { value: message };
-        const result = await CryoExtensionRegistry
+        const result = await this.extensionRegistry
             .get_executor(this)
             .apply_before_send(boxed_message);
         if (!result.should_emit)
@@ -178,7 +179,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
             .Serialize(this.Client.sessionId, ack_id);
         await this.Send(encodedACKMessage);
         const boxed_message = { value: decodedDataMessage.payload };
-        const result = await CryoExtensionRegistry
+        const result = await this.extensionRegistry
             .get_executor(this)
             .apply_after_receive(boxed_message);
         if (result.should_emit)
@@ -195,7 +196,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
             .Serialize(this.Client.sessionId, ack_id);
         await this.Send(encodedACKMessage);
         const boxed_message = { value: decodedDataMessage.payload };
-        const result = await CryoExtensionRegistry
+        const result = await this.extensionRegistry
             .get_executor(this)
             .apply_after_receive(boxed_message);
         if (result.should_emit)

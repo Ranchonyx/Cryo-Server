@@ -2,8 +2,10 @@ import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 const log = CreateDebugLogger("CRYO_EXTENSION");
 class CryoExtensionExecutor {
     session;
-    constructor(session) {
+    registry;
+    constructor(session, registry) {
         this.session = session;
+        this.registry = registry;
     }
     async execute_if_present(extension, handler_name, message) {
         if (!extension[handler_name])
@@ -22,7 +24,7 @@ class CryoExtensionExecutor {
     async apply_before_send(message) {
         let before_send_result = { should_emit: true };
         log(`Running before_send handler, message: `, message);
-        for (const extension of CryoExtensionRegistry.extensions) {
+        for (const extension of this.registry.extensions) {
             if (typeof message.value === "string") {
                 before_send_result = await this.execute_if_present(extension, "before_send_utf8", message);
             }
@@ -36,7 +38,7 @@ class CryoExtensionExecutor {
     async apply_after_receive(message) {
         let after_receive_result = { should_emit: true };
         log(`Running after_receive handler, message: `, message);
-        for (const extension of CryoExtensionRegistry.extensions) {
+        for (const extension of this.registry.extensions) {
             if (typeof message.value === "string") {
                 after_receive_result = await this.execute_if_present(extension, "on_receive_utf8", message);
             }
@@ -50,17 +52,17 @@ class CryoExtensionExecutor {
 }
 //noinspection JSUnusedGlobalSymbols
 export class CryoExtensionRegistry {
-    static extensions = [];
-    static get_executor(session) {
-        return new CryoExtensionExecutor(session);
+    extensions = [];
+    get_executor(session) {
+        return new CryoExtensionExecutor(session, this);
     }
-    static register(extension) {
+    register(extension) {
         const maybe_index = this.extensions.findIndex(existing_extension => existing_extension.name === extension.name);
         if (maybe_index >= 0)
             throw new Error(`Extension '${extension.name}' is already registered!`);
         this.extensions.push(extension);
     }
-    static unregister(extension) {
+    unregister(extension) {
         const extension_name = typeof extension === "string" ? extension : extension.name;
         const maybe_index = this.extensions.findIndex(extension => extension.name === extension_name);
         if (maybe_index < 0)
@@ -68,8 +70,8 @@ export class CryoExtensionRegistry {
         log(`Unregistered extension '${this.extensions[maybe_index].name}'`);
         this.extensions.splice(maybe_index, 1);
     }
-    static Destroy() {
-        for (const extension of CryoExtensionRegistry.extensions) {
+    Destroy() {
+        for (const extension of this.extensions) {
             this.unregister(extension);
         }
     }
