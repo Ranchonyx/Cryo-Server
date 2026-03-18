@@ -108,7 +108,10 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         remoteSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
         remoteSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));
         remoteClient.on("close", this.WEBSOCKET_HandleRemoteClose.bind(this));
-        remoteClient.on("message", (raw: Buffer) => this.router.do_route(raw));
+        remoteClient.on("message", (raw: Buffer) => {
+            this.bytes_rx += raw.byteLength;
+            this.router.do_route(raw);
+        });
 
         if (use_cale)
             this.handshake.start_server_hello().then(() => null);

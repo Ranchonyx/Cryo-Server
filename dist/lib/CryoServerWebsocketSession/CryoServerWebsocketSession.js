@@ -74,7 +74,10 @@ export class CryoServerWebsocketSession extends EventEmitter {
         remoteSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
         remoteSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));
         remoteClient.on("close", this.WEBSOCKET_HandleRemoteClose.bind(this));
-        remoteClient.on("message", (raw) => this.router.do_route(raw));
+        remoteClient.on("message", (raw) => {
+            this.bytes_rx += raw.byteLength;
+            this.router.do_route(raw);
+        });
         if (use_cale)
             this.handshake.start_server_hello().then(() => null);
         else
@@ -137,14 +140,20 @@ export class CryoServerWebsocketSession extends EventEmitter {
         await this.Send(encodedBinaryDataMessage);
     }
     /*
-    * Respond to PONG frames and set the client to be alive
+    * Respond to PING & PONG frames and set the client to be alive
     * */
     async HandlePingPongMessage(message) {
         const decodedPingPongMessage = this.ping_pong_formatter
             .Deserialize(message);
-        if (decodedPingPongMessage.payload !== "pong")
-            return;
-        this.Client.isAlive = true;
+        //A peer is pinging us, play nice and respond
+        if (decodedPingPongMessage.payload === "ping") {
+            const outgoingPong = this.ping_pong_formatter.Serialize(this.Client.sessionId, decodedPingPongMessage.ack, "pong");
+            await this.Send(outgoingPong);
+        }
+        else {
+            //A normal client responded to our ping
+            this.Client.isAlive = true;
+        }
     }
     /*
     * Handling of binary error messages from the client, currently just log it
