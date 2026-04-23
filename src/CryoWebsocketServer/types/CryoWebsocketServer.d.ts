@@ -5,7 +5,6 @@ export interface ICryoWebsocketServerOptions {
     port?: number;
     backpressure?: BackpressureOpts;
     ssl?: SSLOptions;
-    use_cale: boolean;
 }
 
 export interface SSLOptions {

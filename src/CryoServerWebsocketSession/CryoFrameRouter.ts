@@ -9,17 +9,10 @@ interface RouterHandlers {
     on_error: (frame: Buffer) => Promise<void>;
     on_utf8: (frame: Buffer) => Promise<void>;
     on_binary: (frame: Buffer) => Promise<void>;
-
-    //Handshake frame routing should go to the HandshakeEngine
-    on_server_hello?: (frame: Buffer) => Promise<void>;
-    on_client_hello?: (frame: Buffer) => Promise<void>;
-    on_handshake_done: (frame: Buffer) => Promise<void>;
 }
 
 export class CryoFrameRouter {
     public constructor(
-        private readonly is_secure: () => boolean,
-        private readonly decrypt: (buffer: Buffer) => Buffer,
         private readonly handlers: RouterHandlers,
         private log: DebugLoggerFunction = CreateDebugLogger("CRYO_FRAME_ROUTER")
     ) {
@@ -29,27 +22,14 @@ export class CryoFrameRouter {
         if (!buf || buf.length < 21)
             return null;
 
-        const type_byte = buf.readUint8(20);
-        return type_byte <= BinaryMessageType.HANDSHAKE_DONE ? type_byte as BinaryMessageType : null;
+        return buf.readUint8(20);
     }
 
-    public async do_route(raw: Buffer): Promise<void> {
-        let frame: Buffer = raw;
-        let type: BinaryMessageType | null;
-
-        type = this.try_get_type(raw);
-        if (type === null && this.is_secure()) {
-            try {
-                frame = this.decrypt(raw);
-                type = this.try_get_type(frame);
-            } catch (e) {
-                this.log(`Decryption failed: ${e}`, raw);
-                return;
-            }
-        }
+    public async do_route(frame: Buffer): Promise<void> {
+        let type = this.try_get_type(frame);
 
         if (type === null) {
-            this.log(`Unknown frame type`, raw);
+            this.log(`Unknown frame type`, type);
             return;
         }
 
@@ -68,15 +48,6 @@ export class CryoFrameRouter {
                 return;
             case BinaryMessageType.BINARYDATA:
                 await this.handlers.on_binary(frame);
-                return;
-            case BinaryMessageType.SERVER_HELLO:
-                await this.handlers.on_server_hello?.(frame);
-                return;
-            case BinaryMessageType.CLIENT_HELLO:
-                await this.handlers.on_client_hello?.(frame);
-                return;
-            case BinaryMessageType.HANDSHAKE_DONE:
-                await this.handlers.on_handshake_done(frame);
                 return;
             default:
                 this.log(`Unsupported binary message type ${type}!`);

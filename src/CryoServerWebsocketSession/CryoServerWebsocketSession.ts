@@ -4,16 +4,14 @@ import ws from "ws";
 import {Duplex} from "node:stream";
 import {ICryoServerWebsocketSessionEvents} from "./types/CryoWebsocketSession.js";
 import CryoBinaryFrameFormatter from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
-import CryoFrameFormatter, {BinaryMessageType} from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
+import {BinaryMessageType} from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
 import {UUID} from "node:crypto";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 import {AckTracker} from "../Common/AckTracker/AckTracker.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
 import {FilledBackpressureOpts} from "../CryoWebsocketServer/types/CryoWebsocketServer.js";
 import {BackpressureManager} from "../Common/BackpressureManager/BackpressureManager.js";
-import {CryoCryptoBox} from "./CryoCryptoBox.js";
-import {CryoHandshakeEngine, HandshakeEvents, HandshakeState} from "./CryoHandshakeEngine.js";
-import {CryoFrameRouter} from "./CryoFrameRouter.js";
+import CryoFrameFormatter from "../Common/CryoBinaryMessage/CryoFrameFormatter.js";
 
 type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
 
@@ -26,9 +24,7 @@ export interface CryoServerWebsocketSession<TStorageKeys extends string = string
 enum CloseCode {
     CLOSE_GRACEFUL = 4000,
     CLOSE_CLIENT_ERROR = 4001,
-    CLOSE_SERVER_ERROR = 4002,
-    CLOSE_CALE_MISMATCH = 4010,
-    CLOSE_CALE_HANDSHAKE = 4011
+    CLOSE_SERVER_ERROR = 4002
 }
 
 export class CryoServerWebsocketSession<TStorageKeys extends string = string> extends EventEmitter implements CryoServerWebsocketSession<TStorageKeys> {
@@ -48,17 +44,12 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     private readonly utf8_formatter = CryoBinaryFrameFormatter.GetFormatter("utf8data");
     private readonly binary_formatter = CryoBinaryFrameFormatter.GetFormatter("binarydata");
 
-    private crypto: CryoCryptoBox | null = null;
-    private handshake: CryoHandshakeEngine;
-    private router: CryoFrameRouter;
-
     private storage: Partial<Record<TStorageKeys, any>> = {};
 
     public constructor(private remoteClient: ws & SocketType,
                        private remoteSocket: Duplex,
                        private remoteName: string,
                        backpressure_opts: FilledBackpressureOpts,
-                       private use_cale: boolean,
                        private extensionRegistry: CryoExtensionRegistry
     ) {
         super();
@@ -66,57 +57,37 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
         this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy, CreateDebugLogger(`CRYO_BACKPRESSURE`));
 
-        const handshake_events: HandshakeEvents = {
-            onSecure: ({transmit_key, receive_key}) => {
-                this.crypto = new CryoCryptoBox(transmit_key, receive_key);
-                this.log("Handshake completed. Session is now secured.")
-            },
-            onFailure: (reason) => {
-                this.log(`Handshake failure: ${reason}`);
-                this.Destroy(CloseCode.CLOSE_CALE_HANDSHAKE, "Error during CALE handshake.");
-            }
-        };
-
-        this.handshake = new CryoHandshakeEngine(
-            this.Client.sessionId,
-            (buffer) => this.Send(buffer, true),
-            CryoFrameFormatter,
-            () => this.inc_get_ack(),
-            handshake_events
-        );
-
-        this.router = new CryoFrameRouter(
-            () => this.use_cale && this.handshake.is_secure,
-            (buffer) => this.crypto!.decrypt(buffer),
-            {
-                on_ping_pong: async (b) => this.HandlePingPongMessage(b),
-                on_ack: async (b) => this.HandleAckMessage(b),
-                on_error: async (b) => this.HandleErrorMessage(b),
-                on_utf8: async (b) => this.HandleUTF8DataMessage(b),
-                on_binary: async (b) => this.HandleBinaryDataMessage(b),
-
-                on_client_hello: async (b) => {
-                    if (use_cale)
-                        await this.handshake.on_client_hello(b);
-                    else
-                        this.Destroy(CloseCode.CLOSE_CALE_MISMATCH, "CALE Mismatch. The client excepts CALE encryption, which is currently disabled.");
-                },
-                on_handshake_done: async (b) => this.handshake.on_client_handshake_done(b)
-            }
-        );
-
         remoteSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
         remoteSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));
         remoteClient.on("close", this.WEBSOCKET_HandleRemoteClose.bind(this));
         remoteClient.on("message", (raw: Buffer) => {
             this.bytes_rx += raw.byteLength;
-            this.router.do_route(raw);
+            this.routeFrame(raw);
         });
+    }
 
-        if (use_cale)
-            this.handshake.start_server_hello().then(() => null);
-        else
-            this.log("CALE disabled, running in unencrypted mode.");
+    private async routeFrame(frame: Buffer) {
+        const type = CryoFrameFormatter.GetType(frame);
+
+        switch (type) {
+            case BinaryMessageType.PING_PONG:
+                await this.HandlePingPongMessage(frame);
+                return;
+            case BinaryMessageType.ERROR:
+                await this.HandleErrorMessage(frame);
+                return;
+            case BinaryMessageType.ACK:
+                await this.HandleAckMessage(frame);
+                return;
+            case BinaryMessageType.UTF8DATA:
+                await this.HandleUTF8DataMessage(frame);
+                return;
+            case BinaryMessageType.BINARYDATA:
+                await this.HandleBinaryDataMessage(frame);
+                return;
+            default:
+                this.log(`Unsupported binary message type ${type}!`);
+        }
     }
 
     private inc_get_ack(): number {
@@ -291,10 +262,6 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
                 return "Connection closed due to a client error.";
             case CloseCode.CLOSE_SERVER_ERROR:
                 return "Connection closed due to a server error.";
-            case CloseCode.CLOSE_CALE_MISMATCH:
-                return "Connection closed due to a mismatch in client/server CALE configuration.";
-            case CloseCode.CLOSE_CALE_HANDSHAKE:
-                return "Connection closed due to an error in the CALE handshake.";
             default:
                 return "Unspecified cause for connection closure."
         }
@@ -332,21 +299,14 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         const type = CryoBinaryFrameFormatter.GetType(encodedMessage);
         const prio: "control" | "data" = (type === BinaryMessageType.ACK || type === BinaryMessageType.PING_PONG || type === BinaryMessageType.ERROR) ? "control" : "data";
 
-        let outgoing = encodedMessage;
-        if (this.use_cale && this.secure && !plain)
-            outgoing = this.crypto!.encrypt(encodedMessage);
-        /*
-                const is_secure = this.handshake.state === HandshakeState.SECURE;
-                const outgoing = is_secure && !plain ? this.crypto!.encrypt(encodedMessage) : encodedMessage;
-        */
 
-        const ok = this.bp_mgr!.enqueue(outgoing, prio);
+        const ok = this.bp_mgr!.enqueue(encodedMessage, prio);
         if (!ok) {
             this.log(`Frame ${CryoBinaryFrameFormatter.GetAck(encodedMessage)} was dropped by policy.`);
             return;
         }
 
-        this.bytes_tx += outgoing.byteLength;
+        this.bytes_tx += encodedMessage.byteLength;
     }
 
     public get Client(): ws & SocketType {
@@ -367,10 +327,6 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
     public get id(): string {
         return this.Client.sessionId;
-    }
-
-    public get secure(): boolean {
-        return this.use_cale && this.handshake?.state === HandshakeState.SECURE && this.crypto !== null;
     }
 
     public Destroy(code: number = 4000, message: string = "Closing session.") {

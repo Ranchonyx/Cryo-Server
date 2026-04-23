@@ -37,7 +37,6 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     public static Create(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions) {
         const keepAliveInterval = options?.keepAliveIntervalMs ?? 15000;
         const sockPort = options?.port ?? 8080;
-        const use_cale = options?.use_cale ?? true;
         const backpressure = options?.backpressure ?? {};
 
         const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();
@@ -50,7 +49,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
             maxQueueCount: 1024
         });
 
-        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled, use_cale);
+        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled);
     }
 
     private constructor(private server: http.Server | https.Server,
@@ -58,7 +57,6 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
                         keepAliveInterval: number,
                         socketPort: number,
                         private backpressure_options: FilledBackpressureOpts,
-                        private use_cale: boolean = true,
                         private extensionRegistry = new CryoExtensionRegistry()) {
 
         super();
@@ -159,7 +157,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         client.isAlive = true;
         client.sessionId = clientSid;
 
-        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale, this.extensionRegistry);
+        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.extensionRegistry);
         session.Set("__TOKEN", clientBearerToken);
         session.Set("__TYPE", "client");
 
@@ -219,7 +217,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
                 peer.isAlive = true;
                 peer.sessionId = peerSid;
 
-                const session = new CryoServerWebsocketSession(peer, peer._socket, `peer:${url}`, this.backpressure_options, this.use_cale, this.extensionRegistry);
+                const session = new CryoServerWebsocketSession(peer, peer._socket, `peer:${url}`, this.backpressure_options, this.extensionRegistry);
                 session.Set("__TYPE", "peer");
 
                 this.sessions.push(session);

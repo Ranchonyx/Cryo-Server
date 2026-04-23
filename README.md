@@ -69,7 +69,6 @@ Cryo-Clients send a ``token``, which you may validate in the ``validate``-functi
 interface ICryoWebsocketServerOptions {
     keepAliveIntervalMs?: number;
     port?: number;
-    use_cale: boolean;
     ssl?: {
         key: Buffer;
         cert: Buffer;
@@ -90,8 +89,6 @@ This interface describes various configuration options for the CryoServer:
     - The frequency in which the server will send application-level pings to the clients, by default ``15000`` is chosen
 - port
     - The local port to listen on, by default ``8080`` is chosen
-- use_cale
-    - If the Server should use ``CALE``, see [CALE](#cale---cryo-application-level-encryption)
 
 In the ``ssl`` object, you may set a `key` and a `cert` to enable SSL connections.
 
@@ -133,7 +130,7 @@ const server = await cryo({
     async validate(token: string): Promise<boolean> {
         return token === "MySuperSecretToken";
     }
-}, {use_cale: false, port: PORT});
+}, {port: PORT});
 
 /*
 The cryo server emits events as described by the CryoWebsocketServerEvents interface
@@ -296,97 +293,36 @@ export interface ICryoExtension {
              └──────────────────────────┘
 
 ```
+
 ### Example extension
+
 This is an exemplary logging extension. It simply logs each incoming and outgoing message
+
 ```typescript
 import {Box, ICryoExtension} from "./CryoExtension";
 import {CryoServerWebsocketSession} from "./CryoServerWebsocketSession";
 
 class LoggerExtension implements ICryoExtension {
-  public name = "unique_name_for_logger";
+    public name = "unique_name_for_logger";
 
-  public async before_send_utf8(session: CryoServerWebsocketSession, outgoing_message: Box<string>) {
-    console.log(`Outgoing UTF-8 message: "${outgoing_message.value}"`);
-    return true;
-  }
+    public async before_send_utf8(session: CryoServerWebsocketSession, outgoing_message: Box<string>) {
+        console.log(`Outgoing UTF-8 message: "${outgoing_message.value}"`);
+        return true;
+    }
 
-  public async before_send_binary(session: CryoServerWebsocketSession, outgoing_message: Box<Buffer>) {
-    console.log(`Outgoing binary message: "${outgoing_message.value.toString(16)}"`);
-    return true;
-  }
+    public async before_send_binary(session: CryoServerWebsocketSession, outgoing_message: Box<Buffer>) {
+        console.log(`Outgoing binary message: "${outgoing_message.value.toString(16)}"`);
+        return true;
+    }
 
-  public async on_receive_utf8(session: CryoServerWebsocketSession, incoming_message: Box<string>) {
-    console.log(`Incoming UTF-8 message: "${outgoing_message.value}"`);
-    return true;
-  }
+    public async on_receive_utf8(session: CryoServerWebsocketSession, incoming_message: Box<string>) {
+        console.log(`Incoming UTF-8 message: "${outgoing_message.value}"`);
+        return true;
+    }
 
-  public async before_send_utf8(session: CryoServerWebsocketSession, incoming_message: Box<Buffer>) {
-    console.log(`Incoming binary message: "${outgoing_message.value.toString(16)}"`);
-    return true;
-  }
+    public async before_send_utf8(session: CryoServerWebsocketSession, incoming_message: Box<Buffer>) {
+        console.log(`Incoming binary message: "${outgoing_message.value.toString(16)}"`);
+        return true;
+    }
 }
 ```
-
-
-## CALE - Cryo application level encryption
-
-Warning - This feature is unavailable in the C# client
-
-**CALE** is an optional, end-to-end encryption layer for Cryo.
-
-It adds a layer of cryptographic protection on top of WebSockets/TCP, mainly for environments without TLS or custom
-setups
-
-**How:**
-
-- It uses **ECDH / P-256** for an ephemeral key exchange
-- Derives symmetric session keys using **SHA-256**
-- Encrypts frames using **AES-128-GCM**
-- Performs a 3-step handshake ``server_hello -> client_hello -> handshake_done``
-- Once completed, all frames are encrypted
-
-```` 
-+-------------+                                      +-------------+
-|   Client    |                                      |   Server    |
-+------+------+                                      +------+------+
-       |                                                    |
-       | 1) server_hello(pub_key_s, sid, ack)               |
-       | <------------------------------------------------- |
-       |                                                    |
-       | 2) client_hello(pub_key_c, sid, ack)               |
-       | -------------------------------------------------> |
-       |                                                    |
-       | 3) handshake_done                                  |
-       | <------------------------------------------------- |
-       |                                                    |
-       | 4) handshake_done (ack)                            |
-       | -------------------------------------------------> |
-       |                                                    |
-+------+------ +                                      +------+------+
-| Secure Chan. | <---------- AES-128-GCM ------------>| Secure Chan.|
-|  (tx/rx)     |                                      |  (tx/rx)    |
-+--------------+                                      +-------------+
-
-````
-
-Session keys are derived as such
-
-```
-secret  = ECDH(pub_key_server, priv_key_client)
-hash    = SHA256(secret)
-rx_key  = hash[0..15]
-tx_key  = hash[16..31]
-```
-
-After the ``handshake_done``-step, both peers switch into secure mode, meaning that all data frames (`utf8data`,
-`binarydata`) will be encrypted using AES-GCM
-
-**Why:**
-
-CALE is not meant to replace TLS, I wouldn't dare.
-
-It is a protocol-level experiment for extra application-layer encryption, primarily for private deployments or custom
-setups.
-
-If you are communicating via TLS, you do **not** need **CALE** at all and it is recommended to disable it for
-performance reasons.

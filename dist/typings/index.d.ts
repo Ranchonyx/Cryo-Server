@@ -1,6 +1,6 @@
-import {EventEmitter} from "node:events";
-import {UUID} from "node:crypto";
-import http from "node:http";
+import type {EventEmitter} from "node:events";
+import type {UUID} from "node:crypto";
+import type http from "node:http";
 
 /**
  * CryoServerWebsocketSession typings
@@ -118,7 +118,6 @@ export interface ICryoWebsocketServerOptions {
     keepAliveIntervalMs?: number;
     port?: number;
     backpressure?: BackpressureOpts;
-    use_cale?: boolean;
     ssl?: SSLOptions;
 }
 
