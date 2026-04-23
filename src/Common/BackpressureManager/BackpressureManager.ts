@@ -17,7 +17,10 @@ interface FrameQueueItem {
 export class BackpressureManager {
     private queue: FrameQueueItem[] = []
     private queued_bytes = 0;
-    private tick: NodeJS.Timeout | null = null;
+    /*
+        private tick: NodeJS.Timeout | null = null;
+    */
+    private flushing: boolean = false;
     private stat_log_tick: NodeJS.Timeout | null = setInterval(() => this.log_stats(), 5000);
 
     public constructor(private ws: ws, private WM_HI: number, private WM_LO: number, private MAX_Q_BYTES: number, private MAX_Q_COUNT: number, private drop: DropPolicy, private log: DebugLoggerFunction, private on_drop?: (item: FrameQueueItem) => void) {
@@ -28,7 +31,9 @@ export class BackpressureManager {
             this.ws?._socket?.on?.("drain", () => this.try_flush());
         }
 
-        this.tick = setInterval(() => this.try_flush(), 50);
+        /*
+                this.tick = setInterval(() => this.try_flush(), 50);
+        */
     }
 
     private log_stats() {
@@ -91,7 +96,6 @@ export class BackpressureManager {
         this.queue.push({buffer, priority, key, ts: Date.now()});
         this.queued_bytes += buffer.byteLength;
 
-        this.log_stats();
         //Try sending the queue right now
         this.try_flush();
 
@@ -99,35 +103,52 @@ export class BackpressureManager {
     }
 
     public try_flush(): void {
-        if (!this.can_send())
+        if (this.flushing)
             return;
 
-        //Give control frames priority when being sent
-        if (this.queue.length > 1)
-            this.queue.sort((iA, iB) => (iA.priority === iB.priority) ? 0 : (iA.priority === "control" ? -1 : 1));
+        this.flushing = true;
+        try {
+            if (!this.can_send())
+                return;
 
-        while (this.queue.length > 0 && this.ws.bufferedAmount < this.WM_HI) {
-            const item = this.queue.shift();
-            Guard.CastAssert<FrameQueueItem>(item, item !== undefined, "evicted_item was undefined!");
+            //Give control frames priority when being sent
+            if (this.queue.length > 1)
+                this.queue.sort((iA, iB) => (iA.priority === iB.priority) ? 0 : (iA.priority === "control" ? -1 : 1));
 
-            this.queued_bytes -= item.buffer.byteLength;
-            this.ws.send(item.buffer, {binary: true});
+            while (this.queue.length > 0 && this.ws.bufferedAmount < this.WM_HI) {
+                const item = this.queue.shift();
+                Guard.CastAssert<FrameQueueItem>(item, item !== undefined, "evicted_item was undefined!");
 
-            //Pause sending data and wait for 'drain' event on the socket
-            if (this.ws.bufferedAmount >= this.WM_HI)
-                break;
+                this.queued_bytes -= item.buffer.byteLength;
+                this.ws.send(item.buffer, {binary: true}, (err) => {
+                    if (err)
+                        return;
+
+                    this.try_flush();
+                });
+
+                //Pause sending data and wait for 'drain' event on the socket
+                if (this.ws.bufferedAmount >= this.WM_HI)
+                    break;
+            }
+        } finally {
+            this.flushing = false;
         }
     }
 
     public Destroy() {
-        if (this.tick)
-            clearInterval(this.tick);
+        /*
+                if (this.tick)
+                    clearInterval(this.tick);
+        */
 
-        if(this.stat_log_tick)
+        if (this.stat_log_tick)
             clearInterval(this.stat_log_tick);
 
         this.stat_log_tick = null;
-        this.tick = null;
+        /*
+                this.tick = null;
+        */
         this.queue.length = 0;
         this.queued_bytes = 0;
     }
