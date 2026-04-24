@@ -4,7 +4,7 @@ export class TXStartFrame {
     static Deserialize(value) {
         const sid = BufferUtil.sidFromBuffer(value);
         const type = value.readUint8(16);
-        const ack = value.readUInt32BE(20);
+        const ack = value.readUInt32BE(17);
         const txId = value.readUInt32BE(21);
         if (type !== BinaryMessageType.TX_START)
             throw new Error("Attempt to deserialize a non-tx_start message!");
