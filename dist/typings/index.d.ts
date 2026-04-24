@@ -1,6 +1,7 @@
 import type {EventEmitter} from "node:events";
 import type {UUID} from "node:crypto";
 import type http from "node:http";
+import type {Readable} from "node:stream";
 
 /**
  * CryoServerWebsocketSession typings
@@ -32,6 +33,8 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
     public SendUTF8(message: string): Promise<void>;
 
     public SendBinary(message: Buffer): Promise<void>
+
+    public Stream(source: Readable): Promise<void>;
 
     public Destroy(): void;
 
