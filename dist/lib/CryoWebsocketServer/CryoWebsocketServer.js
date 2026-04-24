@@ -13,7 +13,6 @@ export class CryoWebsocketServer extends EventEmitter {
     server;
     tokenValidator;
     backpressure_options;
-    use_cale;
     extensionRegistry;
     ws_server;
     WebsocketHeartbeatInterval;
@@ -22,7 +21,6 @@ export class CryoWebsocketServer extends EventEmitter {
     static Create(pTokenValidator, options) {
         const keepAliveInterval = options?.keepAliveIntervalMs ?? 15000;
         const sockPort = options?.port ?? 8080;
-        const use_cale = options?.use_cale ?? true;
         const backpressure = options?.backpressure ?? {};
         const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();
         const bpres_opts_filled = OverwriteUnset(backpressure, {
@@ -32,14 +30,13 @@ export class CryoWebsocketServer extends EventEmitter {
             maxQueuedBytes: 8 * 1024 * 1024,
             maxQueueCount: 1024
         });
-        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled, use_cale);
+        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled);
     }
-    constructor(server, tokenValidator, keepAliveInterval, socketPort, backpressure_options, use_cale = true, extensionRegistry = new CryoExtensionRegistry()) {
+    constructor(server, tokenValidator, keepAliveInterval, socketPort, backpressure_options, extensionRegistry = new CryoExtensionRegistry()) {
         super();
         this.server = server;
         this.tokenValidator = tokenValidator;
         this.backpressure_options = backpressure_options;
-        this.use_cale = use_cale;
         this.extensionRegistry = extensionRegistry;
         this.log = CreateDebugLogger("CRYO_SERVER");
         this.ws_server = new WebSocketServer({ noServer: true });
@@ -115,7 +112,7 @@ export class CryoWebsocketServer extends EventEmitter {
         const socketFmt = `${request.socket.remoteAddress}:${request.socket.remotePort}`;
         client.isAlive = true;
         client.sessionId = clientSid;
-        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.use_cale, this.extensionRegistry);
+        const session = new CryoServerWebsocketSession(client, socket, socketFmt, this.backpressure_options, this.extensionRegistry);
         session.Set("__TOKEN", clientBearerToken);
         session.Set("__TYPE", "client");
         this.sessions.push(session);
@@ -163,7 +160,7 @@ export class CryoWebsocketServer extends EventEmitter {
                 Guard.CastAs(peer);
                 peer.isAlive = true;
                 peer.sessionId = peerSid;
-                const session = new CryoServerWebsocketSession(peer, peer._socket, `peer:${url}`, this.backpressure_options, this.use_cale, this.extensionRegistry);
+                const session = new CryoServerWebsocketSession(peer, peer._socket, `peer:${url}`, this.backpressure_options, this.extensionRegistry);
                 session.Set("__TYPE", "peer");
                 this.sessions.push(session);
                 resolve(session);

@@ -11,7 +11,10 @@ export class BackpressureManager {
     on_drop;
     queue = [];
     queued_bytes = 0;
-    tick = null;
+    /*
+        private tick: NodeJS.Timeout | null = null;
+    */
+    flushing = false;
     stat_log_tick = setInterval(() => this.log_stats(), 5000);
     constructor(ws, WM_HI, WM_LO, MAX_Q_BYTES, MAX_Q_COUNT, drop, log, on_drop) {
         this.ws = ws;
@@ -28,7 +31,9 @@ export class BackpressureManager {
             Guard.CastAssert(this.ws._socket, this.ws?._socket !== undefined, "ws._socket was undefined!");
             this.ws?._socket?.on?.("drain", () => this.try_flush());
         }
-        this.tick = setInterval(() => this.try_flush(), 50);
+        /*
+                this.tick = setInterval(() => this.try_flush(), 50);
+        */
     }
     log_stats() {
         this.log(`Max queue elements: ${this.MAX_Q_COUNT}, Max queued bytes: ${this.MAX_Q_BYTES}, Drop policy: '${this.drop}'`);
@@ -81,34 +86,49 @@ export class BackpressureManager {
         }
         this.queue.push({ buffer, priority, key, ts: Date.now() });
         this.queued_bytes += buffer.byteLength;
-        this.log_stats();
         //Try sending the queue right now
         this.try_flush();
         return true;
     }
     try_flush() {
-        if (!this.can_send())
+        if (this.flushing)
             return;
-        //Give control frames priority when being sent
-        if (this.queue.length > 1)
-            this.queue.sort((iA, iB) => (iA.priority === iB.priority) ? 0 : (iA.priority === "control" ? -1 : 1));
-        while (this.queue.length > 0 && this.ws.bufferedAmount < this.WM_HI) {
-            const item = this.queue.shift();
-            Guard.CastAssert(item, item !== undefined, "evicted_item was undefined!");
-            this.queued_bytes -= item.buffer.byteLength;
-            this.ws.send(item.buffer, { binary: true });
-            //Pause sending data and wait for 'drain' event on the socket
-            if (this.ws.bufferedAmount >= this.WM_HI)
-                break;
+        this.flushing = true;
+        try {
+            if (!this.can_send())
+                return;
+            //Give control frames priority when being sent
+            if (this.queue.length > 1)
+                this.queue.sort((iA, iB) => (iA.priority === iB.priority) ? 0 : (iA.priority === "control" ? -1 : 1));
+            while (this.queue.length > 0 && this.ws.bufferedAmount < this.WM_HI) {
+                const item = this.queue.shift();
+                Guard.CastAssert(item, item !== undefined, "evicted_item was undefined!");
+                this.queued_bytes -= item.buffer.byteLength;
+                this.ws.send(item.buffer, { binary: true }, (err) => {
+                    if (err)
+                        return;
+                    this.try_flush();
+                });
+                //Pause sending data and wait for 'drain' event on the socket
+                if (this.ws.bufferedAmount >= this.WM_HI)
+                    break;
+            }
+        }
+        finally {
+            this.flushing = false;
         }
     }
     Destroy() {
-        if (this.tick)
-            clearInterval(this.tick);
+        /*
+                if (this.tick)
+                    clearInterval(this.tick);
+        */
         if (this.stat_log_tick)
             clearInterval(this.stat_log_tick);
         this.stat_log_tick = null;
-        this.tick = null;
+        /*
+                this.tick = null;
+        */
         this.queue.length = 0;
         this.queued_bytes = 0;
     }
