@@ -20,7 +20,7 @@ export class TXStartFrame {
         const sid_buf = BufferUtil.sidToBuffer(sid);
         sid_buf.copy(msg_buf, 0);
         msg_buf.writeUint8(BinaryMessageType.TX_START, 16);
-        msg_buf.writeUInt32BE(ack, 20);
+        msg_buf.writeUInt32BE(ack, 17);
         msg_buf.writeUInt32BE(txId, 21);
         return msg_buf;
     }
