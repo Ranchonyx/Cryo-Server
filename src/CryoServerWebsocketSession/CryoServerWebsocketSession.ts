@@ -34,19 +34,60 @@ enum CloseCode {
     CLOSE_SERVER_ERROR = 4002
 }
 
+function handleTrans(session: CryoServerWebsocketSession, callback: (destination: Readable) => Promise<void> | void) {
+    const streams = new Map<number, Readable>;
+
+    async function onTxStart(incomingTxId: number) {
+        console.info(`tx-start, txid: ${incomingTxId}`)
+        const stream = new Readable({
+            read() {
+            }
+        });
+
+        //Handle stream
+        stream.on("close", () => {
+            streams.delete(incomingTxId);
+        });
+
+        streams.set(incomingTxId, stream);
+        callback(stream);
+    }
+
+    async function onTxFinish(incomingTxId: number) {
+        console.info(`tx-finish, txid: ${incomingTxId}`)
+        if (!streams.has(incomingTxId))
+            return;
+
+        streams.get(incomingTxId)!.push(null);
+    }
+
+    async function onTxChunk(incomingTxId: number, data: Buffer) {
+        console.info(`tx-chunk, txid: ${incomingTxId}, sz: ${data.byteLength}`);
+        if (!streams.has(incomingTxId))
+            return;
+
+        streams.get(incomingTxId)!.push(data);
+    }
+
+    session.on("tx-start", onTxStart);
+    session.on("tx-finish", onTxFinish);
+    session.on("tx-chunk", onTxChunk);
+}
+
 export class CryoServerWebsocketSession<TStorageKeys extends string = string> extends EventEmitter implements CryoServerWebsocketSession<TStorageKeys> {
-    private client_ack_tracker: AckTracker = new AckTracker();
     private readonly bp_mgr: BackpressureManager | null = null;
+    private readonly log: DebugLoggerFunction;
+    private readonly client_ack_tracker: AckTracker = new AckTracker();
+    private readonly storage: Partial<Record<TStorageKeys, any>> = {};
+    private readonly streams = new Map<number, Readable>;
+
+    private destroyed = false;
+
     private current_ack = 0;
     private current_txid = 0;
 
     private bytes_rx = 0;
     private bytes_tx = 0;
-    private destroyed = false;
-
-    private readonly log: DebugLoggerFunction;
-
-    private storage: Partial<Record<TStorageKeys, any>> = {};
 
     public constructor(private remoteClient: ws & SocketType,
                        private remoteSocket: Duplex,
@@ -185,13 +226,48 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         await this.Send(encodedBinaryDataMessage);
     }
 
-    public async Stream(source: Readable) {
+    public async WaitForStream(streamName: string = "anonymous", timeout: number = 1000): Promise<Readable> {
+        const timeoutSig = AbortSignal.timeout(timeout);
+
+        return new Promise<Readable>((resolve, reject) => {
+            const onTxStartListener = async (txId: number, txName: string) => {
+                if (txName === streamName) {
+                    if (!this.streams.has(txId)) {
+                        this.off("tx-start", onTxStartListener);
+                        timeoutSig.removeEventListener("abort", onAbort);
+
+                        reject(new Error(`No stream id ${txId} present!`));
+                    }
+
+                    const stream = this.streams.get(txId)!;
+
+                    //Remove this listener once the stream has been read
+                    stream.on("close", () => {
+                        this.off("tx-start", onTxStartListener);
+                    })
+
+                    resolve(stream);
+                }
+            }
+
+            const onAbort = () => {
+                this.off("tx-start", onTxStartListener);
+                timeoutSig.removeEventListener("abort", onAbort);
+                reject(new Error(`Timeout elapsed!`));
+            }
+
+            this.on("tx-start", onTxStartListener);
+            timeoutSig.addEventListener("abort", onAbort);
+        });
+    }
+
+    public async Stream(source: Readable, streamName: string = "anonymous") {
         return new Promise<void>((resolve, reject) => {
 
             const new_ack_id = this.inc_get_ack();
             const new_txid = this.inc_get_txid();
 
-            const start_frame = TXStartFrame.Serialize(this.Client.sessionId, new_ack_id, new_txid);
+            const start_frame = TXStartFrame.Serialize(this.Client.sessionId, new_ack_id, new_txid, streamName);
             this.Send(start_frame);
 
             source.on("data", (chunk: Buffer) => {
@@ -310,7 +386,18 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
         await this.Send(encodedACKMessage);
 
-        this.emit("tx-start", decodedStartFrame.txId);
+        const stream = new Readable({
+            read() {
+            }
+        });
+
+        //Handle stream
+        stream.on("close", () => {
+            this.streams.delete(decodedStartFrame.txId);
+        });
+        this.streams.set(decodedStartFrame.txId, stream);
+
+        this.emit("tx-start", decodedStartFrame.txId, decodedStartFrame.txName);
     }
 
     private async HandleTxFinishMessage(message: Buffer): Promise<void> {
@@ -323,12 +410,22 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
         await this.Send(encodedACKMessage);
 
+        //Handle stream
+        if (!this.streams.has(decodedFinishFrame.txId))
+            return;
+        this.streams.get(decodedFinishFrame.txId)!.push(null);
+
         this.emit("tx-finish", decodedFinishFrame.txId);
     }
 
     private async HandleTxChunkMessage(message: Buffer): Promise<void> {
         const decodedChunkFrame = TXChunkFrame
             .Deserialize(message);
+
+        //Handle stream
+        if (!this.streams.has(decodedChunkFrame.txId))
+            return;
+        this.streams.get(decodedChunkFrame.txId)!.push(decodedChunkFrame.payload);
 
         this.emit("tx-chunk", decodedChunkFrame.txId, decodedChunkFrame.payload);
     }

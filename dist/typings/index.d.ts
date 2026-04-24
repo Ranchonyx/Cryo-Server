@@ -16,7 +16,7 @@ export declare interface ICryoServerWebsocketSessionEvents {
 
     "closed": () => void;
 
-    "tx-start": (txId: number) => Promise<void>;
+    "tx-start": (txId: number, txName: string) => Promise<void>;
     "tx-chunk": (txId: number, data: Buffer) => Promise<void>;
     "tx-finish": (txId: number) => Promise<void>;
 }
@@ -39,6 +39,8 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
     public SendBinary(message: Buffer): Promise<void>
 
     public Stream(source: Readable): Promise<void>;
+
+    public WaitForStream(streamName?: string, timeout?: number): Promise<Readable>;
 
     public Destroy(): void;
 
