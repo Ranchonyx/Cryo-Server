@@ -23,7 +23,7 @@ export class TXStartFrame {
     }
 
     public static Serialize(sid: UUID, ack: number, txId: number, name: string): Buffer {
-        const msg_buf = Buffer.alloc(16 + 4 + 1 + 4);
+        const msg_buf = Buffer.alloc(16 + 4 + 1 + 4 + Buffer.from(name, "utf8").byteLength);
         const sid_buf = BufferUtil.sidToBuffer(sid);
 
         sid_buf.copy(msg_buf, 0);
