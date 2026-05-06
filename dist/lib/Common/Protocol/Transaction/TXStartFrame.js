@@ -6,7 +6,7 @@ export class TXStartFrame {
         const type = value.readUint8(16);
         const ack = value.readUInt32BE(17);
         const txId = value.readUInt32BE(21);
-        const txName = value.subarray(22).toString("utf8");
+        const txName = value.subarray(25).toString("utf8");
         if (type !== BinaryMessageType.TX_START)
             throw new Error("Attempt to deserialize a non-tx_start message!");
         return {

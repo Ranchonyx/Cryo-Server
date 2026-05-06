@@ -264,10 +264,14 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     public async Stream(source: Readable, streamName: string = "anonymous") {
         return new Promise<void>((resolve, reject) => {
 
-            const new_ack_id = this.inc_get_ack();
+            const start_ack_id = this.inc_get_ack();
             const new_txid = this.inc_get_txid();
 
-            const start_frame = TXStartFrame.Serialize(this.Client.sessionId, new_ack_id, new_txid, streamName);
+            const start_frame = TXStartFrame.Serialize(this.Client.sessionId, start_ack_id, new_txid, streamName);
+            this.client_ack_tracker.Track(start_ack_id, {
+                message: start_frame,
+                timestamp: Date.now()
+            });
             this.Send(start_frame);
 
             source.on("data", (chunk: Buffer) => {
@@ -276,8 +280,14 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
             });
 
             source.on("end", () => {
-                const finish_frame = TXFinishFrame.Serialize(this.Client.sessionId, this.inc_get_ack(), new_txid);
+                const finish_ack_id = this.inc_get_ack();
+                const finish_frame = TXFinishFrame.Serialize(this.Client.sessionId, finish_ack_id, new_txid);
+                this.client_ack_tracker.Track(finish_ack_id, {
+                    message: finish_frame,
+                    timestamp: Date.now()
+                });
                 this.Send(finish_frame);
+
                 resolve();
             })
 
