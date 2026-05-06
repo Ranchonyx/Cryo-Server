@@ -24,7 +24,7 @@ export class TXStartFrame {
         msg_buf.writeUint8(BinaryMessageType.TX_START, 16);
         msg_buf.writeUInt32BE(ack, 17);
         msg_buf.writeUInt32BE(txId, 21);
-        msg_buf.set(Buffer.from(name, "utf8"), 22);
+        msg_buf.set(Buffer.from(name, "utf8"), 25);
         return msg_buf;
     }
 }
