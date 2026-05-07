@@ -49,12 +49,6 @@ export class BackpressureManager {
     }
 
     public enqueue(buffer: Buffer, priority: MessagePriority = "control", key?: string): boolean {
-        //If we got ctrl traffic, try to bypass queue entirely, so long as we can send it now...
-        if (priority === "control" && this.can_send()) {
-            this.ws.send(buffer, {binary: true});
-            return true;
-        }
-
         if (this.drop === "dedupe-latest" && key) {
             for (let i = this.queue.length - 1; i >= 0; i--) {
                 const item = this.queue[i];
@@ -110,10 +104,6 @@ export class BackpressureManager {
         try {
             if (!this.can_send())
                 return;
-
-            //Give control frames priority when being sent
-            if (this.queue.length > 1)
-                this.queue.sort((iA, iB) => (iA.priority === iB.priority) ? 0 : (iA.priority === "control" ? -1 : 1));
 
             while (this.queue.length > 0 && this.ws.bufferedAmount < this.WM_HI) {
                 const item = this.queue.shift();

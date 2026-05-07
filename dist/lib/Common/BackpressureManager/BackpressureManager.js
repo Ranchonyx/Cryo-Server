@@ -45,7 +45,7 @@ export class BackpressureManager {
             this.ws.bufferedAmount < this.WM_HI &&
             this.ws._socket.writable;
     }
-    enqueue(buffer, priority = "control", /*callback: (err?: Error) => void,*/ key) {
+    enqueue(buffer, priority = "control", key) {
         //If we got ctrl traffic, try to bypass queue entirely, so long as we can send it now...
         if (priority === "control" && this.can_send()) {
             this.ws.send(buffer, { binary: true });

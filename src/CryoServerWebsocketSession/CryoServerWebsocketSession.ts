@@ -486,9 +486,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         const prio: "control" | "data" = (
             type === BinaryMessageType.ACK ||
             type === BinaryMessageType.PING_PONG ||
-            type === BinaryMessageType.ERROR ||
-            type === BinaryMessageType.TX_START ||
-            type === BinaryMessageType.TX_FINISH) ? "control" : "data";
+            type === BinaryMessageType.ERROR) ? "control" : "data";
 
         const ok = this.bp_mgr!.enqueue(encodedMessage, prio);
         if (!ok) {
