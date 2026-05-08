@@ -19,37 +19,6 @@ var CloseCode;
     CloseCode[CloseCode["CLOSE_CLIENT_ERROR"] = 4001] = "CLOSE_CLIENT_ERROR";
     CloseCode[CloseCode["CLOSE_SERVER_ERROR"] = 4002] = "CLOSE_SERVER_ERROR";
 })(CloseCode || (CloseCode = {}));
-function handleTrans(session, callback) {
-    const streams = new Map;
-    async function onTxStart(incomingTxId) {
-        console.info(`tx-start, txid: ${incomingTxId}`);
-        const stream = new Readable({
-            read() {
-            }
-        });
-        //Handle stream
-        stream.on("close", () => {
-            streams.delete(incomingTxId);
-        });
-        streams.set(incomingTxId, stream);
-        callback(stream);
-    }
-    async function onTxFinish(incomingTxId) {
-        console.info(`tx-finish, txid: ${incomingTxId}`);
-        if (!streams.has(incomingTxId))
-            return;
-        streams.get(incomingTxId).push(null);
-    }
-    async function onTxChunk(incomingTxId, data) {
-        console.info(`tx-chunk, txid: ${incomingTxId}, sz: ${data.byteLength}`);
-        if (!streams.has(incomingTxId))
-            return;
-        streams.get(incomingTxId).push(data);
-    }
-    session.on("tx-start", onTxStart);
-    session.on("tx-finish", onTxFinish);
-    session.on("tx-chunk", onTxChunk);
-}
 export class CryoServerWebsocketSession extends EventEmitter {
     remoteClient;
     remoteSocket;
@@ -72,7 +41,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         this.remoteName = remoteName;
         this.extensionRegistry = extensionRegistry;
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
-        this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy, CreateDebugLogger(`CRYO_BACKPRESSURE`));
+        this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts, CreateDebugLogger(`CRYO_BACKPRESSURE`));
         remoteSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
         remoteSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));
         remoteClient.on("close", this.WEBSOCKET_HandleRemoteClose.bind(this));
@@ -175,6 +144,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         });
         await this.Send(encodedBinaryDataMessage);
     }
+    //noinspection JSUnusedGlobalSymbols
     async WaitForStream(streamName = "anonymous", timeout = 1000) {
         const timeoutSig = AbortSignal.timeout(timeout);
         return new Promise((resolve, reject) => {
@@ -202,6 +172,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
             timeoutSig.addEventListener("abort", onAbort);
         });
     }
+    //noinspection JSUnusedGlobalSymbols
     async Stream(source, streamName = "anonymous") {
         return new Promise((resolve, reject) => {
             const start_ack_id = this.inc_get_ack();
@@ -378,13 +349,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     * Send a buffer to the client
     * */
     async Send(encodedMessage) {
-        const type = BufferUtil.GetType(encodedMessage);
-        const prio = (type === BinaryMessageType.ACK ||
-            type === BinaryMessageType.PING_PONG ||
-            type === BinaryMessageType.ERROR ||
-            type === BinaryMessageType.TX_START ||
-            type === BinaryMessageType.TX_FINISH) ? "control" : "data";
-        const ok = this.bp_mgr.enqueue(encodedMessage, prio);
+        const ok = this.bp_mgr.enqueue(encodedMessage);
         if (!ok) {
             this.log(`Frame ${BufferUtil.GetAck(encodedMessage)} was dropped by policy.`);
             return;
@@ -397,15 +362,19 @@ export class CryoServerWebsocketSession extends EventEmitter {
     get_ack_tracker() {
         return this.client_ack_tracker;
     }
+    //noinspection JSUnusedGlobalSymbols
     get rx() {
         return this.bytes_rx;
     }
+    //noinspection JSUnusedGlobalSymbols
     get tx() {
         return this.bytes_tx;
     }
+    //noinspection JSUnusedGlobalSymbols
     get id() {
         return this.Client.sessionId;
     }
+    //noinspection JSUnusedGlobalSymbols
     Destroy(code = 4000, message = "Closing session.") {
         this.bp_mgr?.Destroy();
         this.client_ack_tracker.Destroy();
@@ -420,9 +389,11 @@ export class CryoServerWebsocketSession extends EventEmitter {
             this.emit("closed");
         this.destroyed = true;
     }
+    //noinspection JSUnusedGlobalSymbols
     Set(key, value) {
         this.storage[key] = value;
     }
+    //noinspection JSUnusedGlobalSymbols
     Get(key) {
         return this.storage[key];
     }

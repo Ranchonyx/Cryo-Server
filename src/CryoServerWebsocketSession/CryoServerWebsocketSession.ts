@@ -465,7 +465,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     private async Send(encodedMessage: Buffer): Promise<void> {
         const ok = this.bp_mgr!.enqueue(encodedMessage);
         if (!ok) {
-            this.log(`Frame ${BufferUtil.GetAck(encodedMessage)} was dropped by policy.`);
+            this.log(`Frame ${BufferUtil.GetType(encodedMessage)} was dropped by policy.`);
             return;
         }
 

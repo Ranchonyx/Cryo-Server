@@ -8,7 +8,6 @@ import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 import Guard from "../Common/Util/Guard.js";
 import { CryoServerWebsocketSession } from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import { CryoExtensionRegistry } from "../CryoExtension/CryoExtensionRegistry.js";
-import { OverwriteUnset } from "../Common/Util/OverwriteUnset.js";
 export class CryoWebsocketServer extends EventEmitter {
     server;
     tokenValidator;
@@ -21,16 +20,9 @@ export class CryoWebsocketServer extends EventEmitter {
     static Create(pTokenValidator, options) {
         const keepAliveInterval = options?.keepAliveIntervalMs ?? 15000;
         const sockPort = options?.port ?? 8080;
-        const backpressure = options?.backpressure ?? {};
+        const backpressure = options?.backpressure ?? "default";
         const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();
-        const bpres_opts_filled = OverwriteUnset(backpressure, {
-            dropPolicy: "drop-oldest",
-            highWaterMark: 16 * 1024 * 1024,
-            lowWaterMark: 1024 * 1024,
-            maxQueuedBytes: 8 * 1024 * 1024,
-            maxQueueCount: 1024
-        });
-        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled);
+        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, backpressure);
     }
     constructor(server, tokenValidator, keepAliveInterval, socketPort, backpressure_options, extensionRegistry = new CryoExtensionRegistry()) {
         super();
