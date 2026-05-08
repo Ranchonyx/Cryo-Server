@@ -31,7 +31,7 @@ export class CryoWebsocketServer extends EventEmitter {
         this.backpressure_options = backpressure_options;
         this.extensionRegistry = extensionRegistry;
         this.log = CreateDebugLogger("CRYO_SERVER");
-        this.ws_server = new WebSocketServer({ noServer: true, maxPayload: 1 });
+        this.ws_server = new WebSocketServer({ noServer: true });
         this.WebsocketHeartbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
             .ref();
         this.server.on("upgrade", this.HTTPUpgradeCallback.bind(this));
