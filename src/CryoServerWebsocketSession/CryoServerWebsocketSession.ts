@@ -2,13 +2,15 @@ import {EventEmitter} from "node:events";
 import {DebugLoggerFunction} from "node:util";
 import ws from "ws";
 import {Duplex, Readable} from "node:stream";
-import {ICryoServerWebsocketSessionEvents} from "./types/CryoWebsocketSession.js";
 import {UUID} from "node:crypto";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 import {AckTracker} from "../Common/AckTracker/AckTracker.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
-import {FilledBackpressureOpts} from "../CryoWebsocketServer/types/CryoWebsocketServer.js";
-import {BackpressureManager} from "../Common/BackpressureManager/BackpressureManager.js";
+import {
+    BackpressureManager,
+    BackpressureOpts,
+    BackpressureProfile
+} from "../Common/BackpressureManager/BackpressureManager.js";
 import {BufferUtil} from "../Common/Protocol/BufferUtil.js";
 import {BinaryMessageType} from "../Common/Protocol/defs.js";
 import {PingPongFrame} from "../Common/Protocol/Basic/PingPongFrame.js";
@@ -20,7 +22,22 @@ import {TXStartFrame} from "../Common/Protocol/Transaction/TXStartFrame.js";
 import {TXFinishFrame} from "../Common/Protocol/Transaction/TXFinishFrame.js";
 import {TXChunkFrame} from "../Common/Protocol/Transaction/TXChunkFrame.js";
 
-type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
+export interface ICryoServerWebsocketSessionEvents {
+    "message-utf8": (message: string) => Promise<void>;
+    "message-binary": (message: Buffer) => Promise<void>;
+
+    "stat-rtt": (stat: number) => Promise<void>;
+    "stat-ack-timeout": (stat: number) => Promise<void>;
+    "stat-bytes-rx": (stat: number) => Promise<void>;
+    "stat-bytes-tx": (stat: number) => Promise<void>;
+
+    "connected": () => void;
+    "closed": () => void;
+
+    "tx-start": (txId: number, txName: string) => Promise<void>;
+    "tx-chunk": (txId: number, data: Buffer) => Promise<void>;
+    "tx-finish": (txId: number) => Promise<void>;
+}
 
 export interface CryoServerWebsocketSession<TStorageKeys extends string = string> {
     on<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, listener: ICryoServerWebsocketSessionEvents[U]): this;
@@ -34,45 +51,7 @@ enum CloseCode {
     CLOSE_SERVER_ERROR = 4002
 }
 
-function handleTrans(session: CryoServerWebsocketSession, callback: (destination: Readable) => Promise<void> | void) {
-    const streams = new Map<number, Readable>;
-
-    async function onTxStart(incomingTxId: number) {
-        console.info(`tx-start, txid: ${incomingTxId}`)
-        const stream = new Readable({
-            read() {
-            }
-        });
-
-        //Handle stream
-        stream.on("close", () => {
-            streams.delete(incomingTxId);
-        });
-
-        streams.set(incomingTxId, stream);
-        callback(stream);
-    }
-
-    async function onTxFinish(incomingTxId: number) {
-        console.info(`tx-finish, txid: ${incomingTxId}`)
-        if (!streams.has(incomingTxId))
-            return;
-
-        streams.get(incomingTxId)!.push(null);
-    }
-
-    async function onTxChunk(incomingTxId: number, data: Buffer) {
-        console.info(`tx-chunk, txid: ${incomingTxId}, sz: ${data.byteLength}`);
-        if (!streams.has(incomingTxId))
-            return;
-
-        streams.get(incomingTxId)!.push(data);
-    }
-
-    session.on("tx-start", onTxStart);
-    session.on("tx-finish", onTxFinish);
-    session.on("tx-chunk", onTxChunk);
-}
+type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
 
 export class CryoServerWebsocketSession<TStorageKeys extends string = string> extends EventEmitter implements CryoServerWebsocketSession<TStorageKeys> {
     private readonly bp_mgr: BackpressureManager | null = null;
@@ -92,13 +71,13 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     public constructor(private remoteClient: ws & SocketType,
                        private remoteSocket: Duplex,
                        private remoteName: string,
-                       backpressure_opts: FilledBackpressureOpts,
+                       backpressure_opts: Required<BackpressureOpts> | BackpressureProfile,
                        private extensionRegistry: CryoExtensionRegistry
     ) {
         super();
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
 
-        this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts.highWaterMark, backpressure_opts.lowWaterMark, backpressure_opts.maxQueuedBytes, backpressure_opts.maxQueueCount, backpressure_opts.dropPolicy, CreateDebugLogger(`CRYO_BACKPRESSURE`));
+        this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts, CreateDebugLogger(`CRYO_BACKPRESSURE`));
 
         remoteSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
         remoteSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));
@@ -226,6 +205,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         await this.Send(encodedBinaryDataMessage);
     }
 
+    //noinspection JSUnusedGlobalSymbols
     public async WaitForStream(streamName: string = "anonymous", timeout: number = 1000): Promise<Readable> {
         const timeoutSig = AbortSignal.timeout(timeout);
 
@@ -261,6 +241,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         });
     }
 
+    //noinspection JSUnusedGlobalSymbols
     public async Stream(source: Readable, streamName: string = "anonymous") {
         return new Promise<void>((resolve, reject) => {
 
@@ -482,13 +463,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     * Send a buffer to the client
     * */
     private async Send(encodedMessage: Buffer): Promise<void> {
-        const type = BufferUtil.GetType(encodedMessage);
-        const prio: "control" | "data" = (
-            type === BinaryMessageType.ACK ||
-            type === BinaryMessageType.PING_PONG ||
-            type === BinaryMessageType.ERROR) ? "control" : "data";
-
-        const ok = this.bp_mgr!.enqueue(encodedMessage, prio);
+        const ok = this.bp_mgr!.enqueue(encodedMessage);
         if (!ok) {
             this.log(`Frame ${BufferUtil.GetAck(encodedMessage)} was dropped by policy.`);
             return;
@@ -505,18 +480,22 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         return this.client_ack_tracker;
     }
 
+    //noinspection JSUnusedGlobalSymbols
     public get rx(): number {
         return this.bytes_rx;
     }
 
+    //noinspection JSUnusedGlobalSymbols
     public get tx(): number {
         return this.bytes_tx;
     }
 
+    //noinspection JSUnusedGlobalSymbols
     public get id(): string {
         return this.Client.sessionId;
     }
 
+    //noinspection JSUnusedGlobalSymbols
     public Destroy(code: number = 4000, message: string = "Closing session.") {
         this.bp_mgr?.Destroy();
         this.client_ack_tracker.Destroy();
@@ -532,10 +511,12 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         this.destroyed = true;
     }
 
+    //noinspection JSUnusedGlobalSymbols
     public Set(key: TStorageKeys, value: any): void {
         this.storage[key] = value;
     }
 
+    //noinspection JSUnusedGlobalSymbols
     public Get<T>(key: TStorageKeys): T {
         return this.storage[key] as T;
     }

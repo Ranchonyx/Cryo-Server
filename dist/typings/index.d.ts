@@ -15,17 +15,13 @@ export declare interface ICryoServerWebsocketSessionEvents {
     "stat-bytes-tx": (stat: number) => Promise<void>;
 
     "closed": () => void;
-
-    "tx-start": (txId: number, txName: string) => Promise<void>;
-    "tx-chunk": (txId: number, data: Buffer) => Promise<void>;
-    "tx-finish": (txId: number) => Promise<void>;
 }
 
 export declare type CryoWebsocketSessionDefaultMetadata = {
     sid: UUID;
 }
 
-export interface CryoServerWebsocketSession<TStorageKeys extends string = string> {
+export declare interface CryoServerWebsocketSession<TStorageKeys extends string = string> {
     on<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, listener: ICryoServerWebsocketSessionEvents[U]): this;
 
     emit<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, ...args: Parameters<ICryoServerWebsocketSessionEvents[U]>): boolean;
@@ -51,9 +47,10 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
     public get id(): string;
 }
 
+
 type Box<T> = { value: T };
 
-export interface ICryoExtension {
+export declare interface ICryoExtension {
 
     /**
      * Executed upon registration of the extension on the server
@@ -108,14 +105,14 @@ export declare interface ITokenValidator {
     validate(token: string): Promise<boolean>;
 }
 
-type DropPolicy = "drop-oldest" | "drop-newest" | "dedupe-latest";
+export declare type DropPolicy = "drop-oldest" | "drop-newest" | "dedupe-latest";
 
 export interface BackpressureOpts {
-    highWaterMark?: number;
-    lowWaterMark?: number;
-    maxQueuedBytes?: number;
-    maxQueueCount?: number;
-    dropPolicy?: DropPolicy;
+    HIGH_WATERMARK: number;
+    LOW_WATERMARK: number;
+    MAX_QUEUED_BYTES: number;
+    MAX_QUEUE_SIZE: number;
+    DROP_POLICY: DropPolicy;
 }
 
 export interface SSLOptions {
@@ -123,10 +120,19 @@ export interface SSLOptions {
     cert: Buffer;
 }
 
+/**
+ * optimize_latency: small buffers, lower queueing delay
+ *
+ * optimize_memory: strict capacities, lowest mem usage
+ *
+ * default: fairly balanced throughput and memory use
+ * */
+export type BackpressureProfile = "optimize_latency" | "optimize_memory" | "default";
+
 export interface ICryoWebsocketServerOptions {
     keepAliveIntervalMs?: number;
     port?: number;
-    backpressure?: BackpressureOpts;
+    backpressure?: BackpressureProfile | BackpressureOpts;
     ssl?: SSLOptions;
 }
 

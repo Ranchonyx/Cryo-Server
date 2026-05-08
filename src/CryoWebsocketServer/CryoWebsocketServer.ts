@@ -8,25 +8,41 @@ import {Duplex} from "node:stream";
 import {EventEmitter} from "node:events";
 import {DebugLoggerFunction} from "node:util";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
-import {ITokenValidator} from "./types/ITokenValidator.js";
-import {
-    CryoWebsocketServerEvents,
-    ICryoWebsocketServerOptions,
-    FilledBackpressureOpts
-} from "./types/CryoWebsocketServer.js";
 import Guard from "../Common/Util/Guard.js";
 import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import {ICryoExtension} from "../CryoExtension/CryoExtension.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
-import {OverwriteUnset} from "../Common/Util/OverwriteUnset.js";
+import {BackpressureProfile, BackpressureOpts} from "../Common/BackpressureManager/BackpressureManager.js";
 
-type SocketType = Duplex & { isAlive: boolean, sessionId: UUID, _socket: Duplex };
+export interface SSLOptions {
+    key: Buffer;
+    cert: Buffer;
+}
+
+export interface CryoWebsocketServerEvents {
+    "session": (session: CryoServerWebsocketSession) => void;
+
+    "listening": () => void;
+}
+
+export interface ICryoWebsocketServerOptions {
+    keepAliveIntervalMs?: number;
+    port?: number;
+    backpressure?: BackpressureProfile | BackpressureOpts
+    ssl?: SSLOptions;
+}
+
+export interface ITokenValidator {
+    validate(token: string): Promise<boolean>;
+}
 
 export interface CryoWebsocketServer {
     on<U extends keyof CryoWebsocketServerEvents>(event: U, listener: CryoWebsocketServerEvents[U]): this;
 
     emit<U extends keyof CryoWebsocketServerEvents>(event: U, ...args: Parameters<CryoWebsocketServerEvents[U]>): boolean;
 }
+
+type SocketType = Duplex & { isAlive: boolean, sessionId: UUID, _socket: Duplex };
 
 export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketServer {
     private readonly ws_server: WebSocketServer;
@@ -37,26 +53,19 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     public static Create(pTokenValidator: ITokenValidator, options?: ICryoWebsocketServerOptions) {
         const keepAliveInterval = options?.keepAliveIntervalMs ?? 15000;
         const sockPort = options?.port ?? 8080;
-        const backpressure = options?.backpressure ?? {};
+
+        const backpressure = options?.backpressure ?? "default";
 
         const server = options?.ssl && options.ssl.key && options.ssl.cert ? https.createServer(options.ssl) : http.createServer();
 
-        const bpres_opts_filled: FilledBackpressureOpts = OverwriteUnset(backpressure, {
-            dropPolicy: "drop-oldest",
-            highWaterMark: 16 * 1024 * 1024,
-            lowWaterMark: 1024 * 1024,
-            maxQueuedBytes: 8 * 1024 * 1024,
-            maxQueueCount: 1024
-        });
-
-        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, bpres_opts_filled);
+        return new CryoWebsocketServer(server, pTokenValidator, keepAliveInterval, sockPort, backpressure);
     }
 
     private constructor(private server: http.Server | https.Server,
                         private tokenValidator: ITokenValidator,
                         keepAliveInterval: number,
                         socketPort: number,
-                        private backpressure_options: FilledBackpressureOpts,
+                        private backpressure_options: Required<BackpressureOpts> | BackpressureProfile,
                         private extensionRegistry = new CryoExtensionRegistry()) {
 
         super();

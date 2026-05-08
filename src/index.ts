@@ -1,6 +1,8 @@
-import {ITokenValidator} from "./CryoWebsocketServer/types/ITokenValidator.js";
-import {ICryoWebsocketServerOptions} from "./CryoWebsocketServer/types/CryoWebsocketServer.js";
-import {CryoWebsocketServer} from "./CryoWebsocketServer/CryoWebsocketServer.js";
+import {
+    CryoWebsocketServer,
+    ICryoWebsocketServerOptions,
+    ITokenValidator
+} from "./CryoWebsocketServer/CryoWebsocketServer.js";
 
 /**
  * Create a Cryo server
