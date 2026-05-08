@@ -24,7 +24,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     remoteSocket;
     remoteName;
     extensionRegistry;
-    bp_mgr = null;
+    bp_mgr;
     log;
     client_ack_tracker = new AckTracker();
     storage = {};
@@ -174,33 +174,28 @@ export class CryoServerWebsocketSession extends EventEmitter {
     }
     //noinspection JSUnusedGlobalSymbols
     async Stream(source, streamName = "anonymous") {
-        return new Promise((resolve, reject) => {
-            const start_ack_id = this.inc_get_ack();
-            const new_txid = this.inc_get_txid();
-            const start_frame = TXStartFrame.Serialize(this.Client.sessionId, start_ack_id, new_txid, streamName);
-            this.client_ack_tracker.Track(start_ack_id, {
-                message: start_frame,
-                timestamp: Date.now()
-            });
-            this.Send(start_frame);
-            source.on("data", (chunk) => {
-                const chunk_frame = TXChunkFrame.Serialize(this.Client.sessionId, new_txid, chunk);
-                this.Send(chunk_frame);
-            });
-            source.on("end", () => {
-                const finish_ack_id = this.inc_get_ack();
-                const finish_frame = TXFinishFrame.Serialize(this.Client.sessionId, finish_ack_id, new_txid);
-                this.client_ack_tracker.Track(finish_ack_id, {
-                    message: finish_frame,
-                    timestamp: Date.now()
-                });
-                this.Send(finish_frame);
-                resolve();
-            });
-            source.on("error", (err) => {
-                reject(err);
-            });
+        const new_txid = this.inc_get_txid();
+        //Send tx_start
+        const start_ack_id = this.inc_get_ack();
+        const start_frame = TXStartFrame.Serialize(this.Client.sessionId, start_ack_id, new_txid, streamName);
+        this.client_ack_tracker.Track(start_ack_id, {
+            message: start_frame,
+            timestamp: Date.now()
         });
+        await this.Send(start_frame);
+        //Send tx_chunk
+        for await (const chunk of source) {
+            const chunk_frame = TXChunkFrame.Serialize(this.Client.sessionId, new_txid, chunk);
+            await this.Send(chunk_frame);
+        }
+        //send tx_finish
+        const finish_ack_id = this.inc_get_ack();
+        const finish_frame = TXFinishFrame.Serialize(this.Client.sessionId, finish_ack_id, new_txid);
+        this.client_ack_tracker.Track(finish_ack_id, {
+            message: finish_frame,
+            timestamp: Date.now()
+        });
+        await this.Send(finish_frame);
     }
     /*
     * Respond to PING & PONG frames and set the client to be alive
@@ -349,12 +344,14 @@ export class CryoServerWebsocketSession extends EventEmitter {
     * Send a buffer to the client
     * */
     async Send(encodedMessage) {
-        const ok = this.bp_mgr.enqueue(encodedMessage);
-        if (!ok) {
-            this.log(`Frame ${BufferUtil.GetType(encodedMessage)} was dropped by policy.`);
-            return;
+        while (true) {
+            const ok = this.bp_mgr.enqueue(encodedMessage);
+            if (ok) {
+                this.bytes_tx += encodedMessage.byteLength;
+                return;
+            }
+            await this.bp_mgr.spinUntilWritable();
         }
-        this.bytes_tx += encodedMessage.byteLength;
     }
     get Client() {
         return this.remoteClient;

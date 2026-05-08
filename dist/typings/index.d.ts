@@ -34,7 +34,7 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
 
     public SendBinary(message: Buffer): Promise<void>
 
-    public Stream(source: Readable): Promise<void>;
+    public Stream(source: Readable, streamName?: string): Promise<void>;
 
     public WaitForStream(streamName?: string, timeout?: number): Promise<Readable>;
 

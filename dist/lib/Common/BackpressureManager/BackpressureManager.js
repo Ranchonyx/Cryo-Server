@@ -66,6 +66,15 @@ export class BackpressureManager {
         Guard.CastAs(this.ws);
         return this.ws.readyState === this.ws.OPEN && this.ws._socket.writable;
     }
+    async spinUntilWritable() {
+        const { LOW_WATERMARK } = this.options;
+        while (this.ws.readyState === this.ws.OPEN &&
+            (this.queued_bytes >= this.options.MAX_QUEUED_BYTES ||
+                this.queue.length >= this.options.MAX_QUEUE_SIZE ||
+                this.ws.bufferedAmount > LOW_WATERMARK)) {
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+    }
     enqueue(buffer, key) {
         if (this.destroyed)
             return false;
