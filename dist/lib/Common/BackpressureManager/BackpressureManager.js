@@ -33,7 +33,9 @@ export class BackpressureManager {
     queued_bytes = 0;
     flushing = false;
     paused = false;
+    destroyed = false;
     stat_log_tick = setInterval(() => this.log_stats(), 5000);
+    retry_tick = null;
     options;
     constructor(ws, options, log, on_drop) {
         this.ws = ws;
@@ -47,19 +49,26 @@ export class BackpressureManager {
             this.ws?._socket?.on?.("drain", () => this.try_flush());
         }
     }
+    schedule_retry() {
+        if (this.retry_tick)
+            return;
+        this.retry_tick = setTimeout(() => {
+            this.retry_tick = null;
+            this.try_flush();
+        }, 5);
+    }
     log_stats() {
         const { DROP_POLICY, MAX_QUEUE_SIZE, MAX_QUEUED_BYTES } = this.options;
         this.log(`Max queue elements: ${MAX_QUEUE_SIZE}, Max queued bytes: ${MAX_QUEUED_BYTES}, Drop policy: '${DROP_POLICY}'`);
         this.log(`Queue length: ${this.queue.length}, Queued bytes: ${this.queued_bytes}, Current buffered bytes: ${this.ws.bufferedAmount}`);
     }
     can_send() {
-        const { HIGH_WATERMARK } = this.options;
         Guard.CastAs(this.ws);
-        return this.ws.readyState === this.ws.OPEN &&
-            this.ws.bufferedAmount < HIGH_WATERMARK &&
-            this.ws._socket.writable;
+        return this.ws.readyState === this.ws.OPEN && this.ws._socket.writable;
     }
     enqueue(buffer, key) {
+        if (this.destroyed)
+            return false;
         const { DROP_POLICY, MAX_QUEUE_SIZE, MAX_QUEUED_BYTES } = this.options;
         const type = BufferUtil.GetType(buffer);
         //Transaction frames form an ordered stream, may never be dropped or reordered
@@ -114,19 +123,24 @@ export class BackpressureManager {
         return true;
     }
     try_flush() {
+        if (this.destroyed)
+            return;
         const { HIGH_WATERMARK, LOW_WATERMARK } = this.options;
         if (this.flushing)
             return;
         //Hysteresis
-        if (this.ws.bufferedAmount >= HIGH_WATERMARK) {
-            this.log(`try_flush(): Exceeded or reached HIGH_WATERMARK ${HIGH_WATERMARK}, pausing`);
+        if (!this.paused && this.ws.bufferedAmount >= HIGH_WATERMARK) {
             this.paused = true;
+            this.log(`try_flush(): Paused at bufferedAmount = ${this.ws.bufferedAmount}`);
         }
-        if (this.paused && this.ws.bufferedAmount > LOW_WATERMARK) {
-            this.log(`try_flush(): Refusing to flush while paused and still exceeding LOW_WATERMARK ${LOW_WATERMARK}`);
-            return;
+        if (this.paused) {
+            if (this.ws.bufferedAmount > LOW_WATERMARK) {
+                this.schedule_retry();
+                return;
+            }
+            this.paused = false;
+            this.log(`try_flush(): resumed at bufferedAmount=${this.ws.bufferedAmount}`);
         }
-        this.paused = false;
         this.flushing = true;
         try {
             //Bail if we can't send right now
@@ -139,10 +153,7 @@ export class BackpressureManager {
                 Guard.CastAssert(item, item !== undefined, "queued was undefined!");
                 this.queued_bytes -= item.buffer.byteLength;
                 //And down the wire it goes!
-                this.ws.send(item.buffer, { binary: true }, (err) => {
-                    if (err)
-                        return;
-                    this.try_flush();
+                this.ws.send(item.buffer, { binary: true }, () => {
                 });
                 //Pause sending data and wait for 'drain' event on the socket
                 if (this.ws.bufferedAmount >= HIGH_WATERMARK)
@@ -154,6 +165,7 @@ export class BackpressureManager {
         }
     }
     Destroy() {
+        this.destroyed = true;
         if (this.stat_log_tick)
             clearInterval(this.stat_log_tick);
         this.stat_log_tick = null;

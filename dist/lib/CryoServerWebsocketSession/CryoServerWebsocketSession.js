@@ -351,7 +351,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     async Send(encodedMessage) {
         const ok = this.bp_mgr.enqueue(encodedMessage);
         if (!ok) {
-            this.log(`Frame ${BufferUtil.GetAck(encodedMessage)} was dropped by policy.`);
+            this.log(`Frame ${BufferUtil.GetType(encodedMessage)} was dropped by policy.`);
             return;
         }
         this.bytes_tx += encodedMessage.byteLength;

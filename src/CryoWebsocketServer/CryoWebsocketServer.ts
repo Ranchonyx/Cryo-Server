@@ -71,7 +71,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         super();
         this.log = CreateDebugLogger("CRYO_SERVER");
 
-        this.ws_server = new WebSocketServer({noServer: true, maxPayload: 1});
+        this.ws_server = new WebSocketServer({noServer: true});
         this.WebsocketHeartbeatInterval = setInterval(this.Heartbeat.bind(this), keepAliveInterval)
             .ref();
 
