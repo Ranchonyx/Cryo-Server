@@ -2,9 +2,9 @@ import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 import { AckTracker } from "../Common/AckTracker/AckTracker.js";
-import { BackpressureManager } from "../Common/BackpressureManager/BackpressureManager.js";
-import { BufferUtil } from "../Common/Protocol/BufferUtil.js";
-import { BinaryMessageType } from "../Common/Protocol/defs.js";
+import { BackpressureManager } from "../BackpressureManager/BackpressureManager.js";
+import { BufferUtil } from "../Common/Util/BufferUtil.js";
+import { BinaryMessageType } from "../Common/Protocol/protocol.js";
 import { PingPongFrame } from "../Common/Protocol/Basic/PingPongFrame.js";
 import { Utf8DataFrame } from "../Common/Protocol/Basic/Utf8DataFrame.js";
 import { BinaryDataFrame } from "../Common/Protocol/Basic/BinaryDataFrame.js";
@@ -196,6 +196,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
             timestamp: Date.now()
         });
         await this.Send(finish_frame);
+        await this.bp_mgr.waitUntilEmpty();
     }
     /*
     * Respond to PING & PONG frames and set the client to be alive

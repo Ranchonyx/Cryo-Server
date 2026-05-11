@@ -27,7 +27,7 @@ export class AckTracker {
 
         //Compute exponentially weighted moving average rtt, like in TCP
         const rtt = Date.now() - maybe_ack.timestamp;
-        if(!this.ewma_rtt)
+        if (!this.ewma_rtt)
             this.ewma_rtt = rtt;
         else
             this.ewma_rtt = (1 - this.alpha) * this.ewma_rtt + this.alpha * rtt;
@@ -50,7 +50,7 @@ export class AckTracker {
         let purged = 0;
         for (const [ack, pending] of this.pending.entries()) {
             if ((now - pending.timestamp) >= this.MAX_STATE_DURATION_MS) {
-                //Purge that mfer
+
                 this.pending.delete(ack);
                 this.log(`Purged message ${CryoFrameInspector.Inspect(pending.message)} (ACK ${ack}) due to being stale for longer than ${this.MAX_STATE_DURATION_MS} milliseconds!`);
                 purged++;

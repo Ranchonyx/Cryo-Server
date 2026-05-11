@@ -12,7 +12,7 @@ import Guard from "../Common/Util/Guard.js";
 import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import {ICryoExtension} from "../CryoExtension/CryoExtension.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
-import {BackpressureProfile, BackpressureOpts} from "../Common/BackpressureManager/BackpressureManager.js";
+import {BackpressureProfile, BackpressureOpts} from "../BackpressureManager/BackpressureManager.js";
 
 export interface SSLOptions {
     key: Buffer;

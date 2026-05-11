@@ -1,5 +1,5 @@
-import { BinaryMessageType } from "../Protocol/defs.js";
-import { BufferUtil } from "../Protocol/BufferUtil.js";
+import { BinaryMessageType } from "../Protocol/protocol.js";
+import { BufferUtil } from "../Util/BufferUtil.js";
 const typeToStringMap = {
     0: "ack",
     1: "error",
@@ -19,16 +19,17 @@ export class CryoFrameInspector {
         if (type >= BinaryMessageType.TX_START) {
             switch (type) {
                 case BinaryMessageType.TX_START:
+                    return `[type=${type_str}, sid=${sid},ack=${ack},txid=${BufferUtil.Transaction.GetTxId(message)},name=${BufferUtil.Transaction.GetTxName(message)}]`;
                 case BinaryMessageType.TX_FINISH:
-                    return `[${sid},${ack},${BufferUtil.Transaction.GetTxId(message)},${type_str}]`;
+                    return `[type=${type_str}, sid=${sid},ack=${ack},txid=${BufferUtil.Transaction.GetTxId(message)}]`;
                 case BinaryMessageType.TX_CHUNK:
-                    return `[${sid},${BufferUtil.Transaction.GetChunkTxId(message)},${type_str},[${BufferUtil.Transaction.GetChunkPayload(message)}]]`;
+                    return `[type=${type_str}, sid=${sid},txid=${BufferUtil.Transaction.GetChunkTxId(message)},payload[0..15]=${BufferUtil.Transaction.GetChunkPayload(message, "hex").substring(0, 0xf)}]`;
             }
             throw new Error("Unknown type " + type);
         }
         else {
-            const payload = BufferUtil.GetPayload(message);
-            return `[${sid},${ack},${type_str},[${payload}]]`;
+            const payload = BufferUtil.GetPayload(message, "hex").substring(0, 0xf);
+            return `[type=${type_str}, sid=${sid},ack=${ack},payload[0..15]=${payload}]`;
         }
     }
 }

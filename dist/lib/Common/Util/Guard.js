@@ -1,11 +1,6 @@
 class GuardError extends Error {
     constructor(pMessage) {
         super(pMessage);
-        Error.captureStackTrace ||= () => {
-        };
-        if (Error.captureStackTrace) {
-            Error.captureStackTrace(this, GuardError);
-        }
         Object.setPrototypeOf(this, GuardError.prototype);
     }
 }

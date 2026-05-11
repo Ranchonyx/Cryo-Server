@@ -10,17 +10,20 @@ import {
     BackpressureManager,
     BackpressureOpts,
     BackpressureProfile
-} from "../Common/BackpressureManager/BackpressureManager.js";
-import {BufferUtil} from "../Common/Protocol/BufferUtil.js";
-import {BinaryMessageType} from "../Common/Protocol/defs.js";
-import {PingPongFrame} from "../Common/Protocol/Basic/PingPongFrame.js";
-import {Utf8DataFrame} from "../Common/Protocol/Basic/Utf8DataFrame.js";
-import {BinaryDataFrame} from "../Common/Protocol/Basic/BinaryDataFrame.js";
-import {ErrorFrame} from "../Common/Protocol/Basic/ErrorFrame.js";
-import {ACKFrame} from "../Common/Protocol/Basic/ACKFrame.js";
-import {TXStartFrame} from "../Common/Protocol/Transaction/TXStartFrame.js";
-import {TXFinishFrame} from "../Common/Protocol/Transaction/TXFinishFrame.js";
-import {TXChunkFrame} from "../Common/Protocol/Transaction/TXChunkFrame.js";
+} from "../BackpressureManager/BackpressureManager.js";
+import {
+    BinaryMessageType,
+    BufferUtil,
+    ACKFrame,
+    BinaryDataFrame,
+    ErrorFrame,
+    PingPongFrame,
+    TXFinishFrame,
+    TXStartFrame,
+    TXChunkFrame,
+    Utf8DataFrame
+} from "cryo-protocol";
+
 
 export interface ICryoServerWebsocketSessionEvents {
     "message-utf8": (message: string) => Promise<void>;
@@ -269,6 +272,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
             timestamp: Date.now()
         });
         await this.Send(finish_frame);
+        await this.bp_mgr.waitUntilEmpty();
     }
 
     /*
