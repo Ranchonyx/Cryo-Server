@@ -19,7 +19,7 @@
     }
   },
   "dependencies": {
-    "cryo-protocol": "^1.0.4",
+    "cryo-protocol": "^1.0.5",
     "ws": "^8.18.0"
   },
   "type": "module",

@@ -1,5 +1,4 @@
-import { BinaryMessageType } from "../Protocol/protocol.js";
-import { BufferUtil } from "../Util/BufferUtil.js";
+import { BinaryMessageType, BufferUtil } from "cryo-protocol";
 const typeToStringMap = {
     0: "ack",
     1: "error",

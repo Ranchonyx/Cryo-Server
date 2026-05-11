@@ -38,7 +38,6 @@ export class AckTracker {
         let purged = 0;
         for (const [ack, pending] of this.pending.entries()) {
             if ((now - pending.timestamp) >= this.MAX_STATE_DURATION_MS) {
-                //Purge that mfer
                 this.pending.delete(ack);
                 this.log(`Purged message ${CryoFrameInspector.Inspect(pending.message)} (ACK ${ack}) due to being stale for longer than ${this.MAX_STATE_DURATION_MS} milliseconds!`);
                 purged++;
