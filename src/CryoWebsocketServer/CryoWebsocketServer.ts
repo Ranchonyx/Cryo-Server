@@ -1,6 +1,5 @@
 import https from "https";
 import http from "node:http";
-import {randomUUID, UUID} from "node:crypto";
 import {WebSocket, WebSocketServer} from "ws"
 import {clearInterval, setInterval} from "node:timers";
 
@@ -13,6 +12,7 @@ import {CryoServerWebsocketSession} from "../CryoServerWebsocketSession/CryoServ
 import {ICryoExtension} from "../CryoExtension/CryoExtension.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
 import {BackpressureProfile, BackpressureOpts} from "../BackpressureManager/BackpressureManager.js";
+import {cryoNewId} from "cryo-protocol";
 
 export interface SSLOptions {
     key: Buffer;
@@ -42,7 +42,7 @@ export interface CryoWebsocketServer {
     emit<U extends keyof CryoWebsocketServerEvents>(event: U, ...args: Parameters<CryoWebsocketServerEvents[U]>): boolean;
 }
 
-type SocketType = Duplex & { isAlive: boolean, sessionId: UUID, _socket: Duplex };
+type SocketType = Duplex & { isAlive: boolean, sessionId: bigint, _socket: Duplex };
 
 export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketServer {
     private readonly ws_server: WebSocketServer;
@@ -84,7 +84,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     }
 
     private __denyAndDestroy(pSocket: Duplex, message: string): void {
-        const body = `<html lang="de-DE"><body><h1>401 Unauthorized</h1><p>${message}</p></body></html>`;
+        const body = `<html><body><h1>401 Unauthorized</h1><p>${message}</p></body></html>`;
         const response =
             `HTTP/1.1 401 Unauthorized\r\n` +
             `Content-Type: text/html; charset=utf-8\r\n` +
@@ -117,7 +117,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         }
 
         if (!authorization.startsWith("Bearer")) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No auth data supplied.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. Incorrect type of auth data supplied.`);
             return;
         }
 
@@ -127,13 +127,14 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
             return;
         }
 
-        if (this.sessions.findIndex(s => s.id === x_cryo_sid) > -1) {
+        //Extract client sid
+        const clientSessionId = BigInt(x_cryo_sid);
+
+        if (this.sessions.findIndex(s => s.sid === clientSessionId) > -1) {
             this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. The session already exists.`);
             return;
         }
 
-        //Extract client sid
-        const clientSessionId = `${x_cryo_sid}` as UUID;
 
         //Trim "Bearer" from "Bearer ..."
         const clientBearerToken = authorization.slice(7);
@@ -157,7 +158,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         });
     }
 
-    private async WSUpgradeCallback(request: http.IncomingMessage, socket: Duplex, client: WebSocket, clientSid: UUID, clientBearerToken: string) {
+    private async WSUpgradeCallback(request: http.IncomingMessage, socket: Duplex, client: WebSocket, clientSid: bigint, clientBearerToken: string) {
         //Assert that the socket has an "isAlive" property and if so, cast the "Client" as having this property
         //Additionally, add a "sessionId" property containing a UUIDv4
         Guard.CastAs<SocketType>(client);
@@ -173,7 +174,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         this.sessions.push(session);
 
         session.on("closed", () => {
-            const s_idx = this.sessions.findIndex(s => s.id === session.id);
+            const s_idx = this.sessions.findIndex(s => s.sid === session.sid);
             this.sessions.splice(s_idx, 1);
         });
 
@@ -197,7 +198,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
                 continue;
             }
 
-            //Also to housekeeping in the ACK tracker of each client
+            //Also do housekeeping in the ACK tracker of each client
             const session_tracker = session.get_ack_tracker();
             session.emit("stat-ack-timeout", session_tracker.Sweep());
             session.emit("stat-rtt", session_tracker.rtt)
@@ -215,9 +216,9 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
     //noinspection JSUnusedGlobalSymbols
     public async ConnectPeer(host: string, bearer: string): Promise<CryoServerWebsocketSession> {
         const url = new URL(host);
-        const peerSid = randomUUID();
+        const peerSid = cryoNewId();
         url.searchParams.set("authorization", `Bearer ${bearer}`);
-        url.searchParams.set("x-cryo-sid", peerSid);
+        url.searchParams.set("x-cryo-sid", String(peerSid));
 
         const peer = new WebSocket(url);
         return new Promise<CryoServerWebsocketSession>((resolve, reject) => {

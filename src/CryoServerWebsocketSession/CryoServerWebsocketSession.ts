@@ -2,7 +2,6 @@ import {EventEmitter} from "node:events";
 import {DebugLoggerFunction} from "node:util";
 import ws from "ws";
 import {Duplex, Readable} from "node:stream";
-import {UUID} from "node:crypto";
 import {CreateDebugLogger} from "../Common/Util/CreateDebugLogger.js";
 import {AckTracker} from "../Common/AckTracker/AckTracker.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
@@ -12,15 +11,15 @@ import {
     BackpressureProfile
 } from "../BackpressureManager/BackpressureManager.js";
 import {
-    BinaryMessageType,
-    BufferUtil,
     ACKFrame,
     BinaryDataFrame,
+    BinaryMessageType,
+    BufferUtil, ByeFrame, CRYO_FEATURE_MASK_TRANSACTION, CRYO_PROTOCOL_VERSION, cryoHasFeatureFlag, EndpointInfoFrame,
     ErrorFrame,
     PingPongFrame,
+    TXChunkFrame,
     TXFinishFrame,
     TXStartFrame,
-    TXChunkFrame,
     Utf8DataFrame
 } from "cryo-protocol";
 
@@ -54,7 +53,7 @@ enum CloseCode {
     CLOSE_SERVER_ERROR = 4002
 }
 
-type SocketType = Duplex & { isAlive: boolean, sessionId: UUID };
+type SocketType = Duplex & { isAlive: boolean, sessionId: bigint };
 
 export class CryoServerWebsocketSession<TStorageKeys extends string = string> extends EventEmitter implements CryoServerWebsocketSession<TStorageKeys> {
     private readonly bp_mgr: BackpressureManager;
@@ -71,6 +70,8 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     private bytes_rx = 0;
     private bytes_tx = 0;
 
+    private receivedProtocolFeatures: bigint = 0n;
+
     public constructor(private remoteClient: ws & SocketType,
                        private remoteSocket: Duplex,
                        private remoteName: string,
@@ -82,15 +83,25 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
         this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts, CreateDebugLogger(`CRYO_BACKPRESSURE`));
 
+        //set up listeners
         remoteSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
         remoteSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));
         remoteClient.on("close", this.WEBSOCKET_HandleRemoteClose.bind(this));
+
+        //Handle incoming ws messages
         remoteClient.on("message", async (raw: Buffer) => {
             this.bytes_rx += raw.byteLength;
             this.routeFrame(raw).catch((err) => {
                 this.log(`routeFrame failed: ${err instanceof Error ? err.stack || err.message : String(err)}`);
             });
         });
+
+        //Send the first endpointInfo message
+        const ack = this.inc_get_ack();
+        const msg = EndpointInfoFrame.Serialize(this.sid, ack);
+        this.client_ack_tracker.Track(ack, {timestamp: Date.now(), message: msg});
+
+        this.Send(msg);
     }
 
     private async routeFrame(frame: Buffer) {
@@ -120,6 +131,14 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
                 return;
             case BinaryMessageType.TX_FINISH:
                 await this.HandleTxFinishMessage(frame);
+                return;
+            case BinaryMessageType.ENDPOINT_INFO:
+                await this.HandleEndpointInfoMessage(frame);
+                return;
+            case BinaryMessageType.BYE:
+                await this.HandleByeMessage(frame);
+                return;
+            case BinaryMessageType.TX_FLOW:
                 return;
             default:
                 this.log(`Unsupported binary message type ${type}!`);
@@ -275,6 +294,40 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         await this.bp_mgr.waitUntilEmpty();
     }
 
+    private async HandleByeMessage(message: Buffer): Promise<void> {
+        const decodedByeMessage = ByeFrame
+            .Deserialize(message);
+
+        const ack_id = decodedByeMessage.ack;
+        const encodedACKMessage = ACKFrame
+            .Serialize(this.Client.sessionId, ack_id);
+
+        await this.Send(encodedACKMessage);
+
+        this.Destroy(4000, decodedByeMessage.reason);
+    }
+
+    private async HandleEndpointInfoMessage(message: Buffer): Promise<void> {
+        const decodedInfoMessage = EndpointInfoFrame
+            .Deserialize(message);
+
+        const ack_id = decodedInfoMessage.ack;
+        const encodedACKMessage = ACKFrame
+            .Serialize(this.Client.sessionId, ack_id);
+
+        await this.Send(encodedACKMessage);
+
+        //Check protocol version equality and fail otherwise
+        if (CRYO_PROTOCOL_VERSION !== decodedInfoMessage.version) {
+            this.Destroy(4001, `Protocol mismatch. Client offered ${decodedInfoMessage.version}, we support ${CRYO_PROTOCOL_VERSION} !`);
+            return;
+        }
+
+        this.log("Got protocol features: ", this.receivedProtocolFeatures.toString(2).padStart(64));
+
+        this.receivedProtocolFeatures = decodedInfoMessage.features;
+    }
+
     /*
     * Respond to PING & PONG frames and set the client to be alive
     * */
@@ -298,6 +351,12 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     private async HandleErrorMessage(message: Buffer): Promise<void> {
         const decodedErrorMessage = ErrorFrame
             .Deserialize(message);
+
+        const ack_id = decodedErrorMessage.ack;
+        const encodedACKMessage = ACKFrame
+            .Serialize(this.Client.sessionId, ack_id);
+
+        await this.Send(encodedACKMessage);
 
         this.log(decodedErrorMessage.payload);
     }
@@ -365,6 +424,11 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     }
 
     private async HandleTxStartMessage(message: Buffer): Promise<void> {
+        if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
+            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+        }
+
         const decodedStartFrame = TXStartFrame
             .Deserialize(message);
 
@@ -389,6 +453,11 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     }
 
     private async HandleTxFinishMessage(message: Buffer): Promise<void> {
+        if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
+            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+        }
+
         const decodedFinishFrame = TXFinishFrame
             .Deserialize(message);
 
@@ -407,12 +476,18 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     }
 
     private async HandleTxChunkMessage(message: Buffer): Promise<void> {
+        if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
+            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+        }
+
         const decodedChunkFrame = TXChunkFrame
             .Deserialize(message);
 
         //Handle stream
         if (!this.streams.has(decodedChunkFrame.txId))
             return;
+
         this.streams.get(decodedChunkFrame.txId)!.push(decodedChunkFrame.payload);
 
         this.emit("tx-chunk", decodedChunkFrame.txId, decodedChunkFrame.payload);
@@ -491,7 +566,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     }
 
     //noinspection JSUnusedGlobalSymbols
-    public get id(): string {
+    public get sid(): bigint {
         return this.Client.sessionId;
     }
 
@@ -505,6 +580,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         } catch {
             //Ignore
         }
+
         if (!this.destroyed)
             this.emit("closed");
 
