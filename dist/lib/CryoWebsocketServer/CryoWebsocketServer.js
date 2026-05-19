@@ -1,6 +1,5 @@
 import https from "https";
 import http from "node:http";
-import { randomUUID } from "node:crypto";
 import { WebSocket, WebSocketServer } from "ws";
 import { clearInterval, setInterval } from "node:timers";
 import { EventEmitter } from "node:events";
@@ -8,6 +7,7 @@ import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 import Guard from "../Common/Util/Guard.js";
 import { CryoServerWebsocketSession } from "../CryoServerWebsocketSession/CryoServerWebsocketSession.js";
 import { CryoExtensionRegistry } from "../CryoExtension/CryoExtensionRegistry.js";
+import { cryoNewId } from "cryo-protocol";
 export class CryoWebsocketServer extends EventEmitter {
     server;
     tokenValidator;
@@ -41,7 +41,7 @@ export class CryoWebsocketServer extends EventEmitter {
         });
     }
     __denyAndDestroy(pSocket, message) {
-        const body = `<html lang="de-DE"><body><h1>401 Unauthorized</h1><p>${message}</p></body></html>`;
+        const body = `<html><body><h1>401 Unauthorized</h1><p>${message}</p></body></html>`;
         const response = `HTTP/1.1 401 Unauthorized\r\n` +
             `Content-Type: text/html; charset=utf-8\r\n` +
             `Content-Length: ${Buffer.byteLength(body)}\r\n` +
@@ -67,7 +67,7 @@ export class CryoWebsocketServer extends EventEmitter {
             return;
         }
         if (!authorization.startsWith("Bearer")) {
-            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No auth data supplied.`);
+            this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. Incorrect type of auth data supplied.`);
             return;
         }
         //Check x-cryo-sid header
@@ -75,12 +75,12 @@ export class CryoWebsocketServer extends EventEmitter {
             this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. No SID supplied.`);
             return;
         }
-        if (this.sessions.findIndex(s => s.id === x_cryo_sid) > -1) {
+        //Extract client sid
+        const clientSessionId = BigInt(x_cryo_sid);
+        if (this.sessions.findIndex(s => s.sid === clientSessionId) > -1) {
             this.__denyAndDestroy(socket, `Upgrade request for ${socketFmt} was refused. The session already exists.`);
             return;
         }
-        //Extract client sid
-        const clientSessionId = `${x_cryo_sid}`;
         //Trim "Bearer" from "Bearer ..."
         const clientBearerToken = authorization.slice(7);
         //Authenticate the extracted bearer token to the supplied "tokenValidator" function
@@ -109,7 +109,7 @@ export class CryoWebsocketServer extends EventEmitter {
         session.Set("__TYPE", "client");
         this.sessions.push(session);
         session.on("closed", () => {
-            const s_idx = this.sessions.findIndex(s => s.id === session.id);
+            const s_idx = this.sessions.findIndex(s => s.sid === session.sid);
             this.sessions.splice(s_idx, 1);
         });
         this.emit("session", session);
@@ -127,7 +127,7 @@ export class CryoWebsocketServer extends EventEmitter {
                 retrievedSession.Destroy(4001, "Disconnecting session due to not responding to ping frames.");
                 continue;
             }
-            //Also to housekeeping in the ACK tracker of each client
+            //Also do housekeeping in the ACK tracker of each client
             const session_tracker = session.get_ack_tracker();
             session.emit("stat-ack-timeout", session_tracker.Sweep());
             session.emit("stat-rtt", session_tracker.rtt);
@@ -143,9 +143,9 @@ export class CryoWebsocketServer extends EventEmitter {
     //noinspection JSUnusedGlobalSymbols
     async ConnectPeer(host, bearer) {
         const url = new URL(host);
-        const peerSid = randomUUID();
+        const peerSid = cryoNewId();
         url.searchParams.set("authorization", `Bearer ${bearer}`);
-        url.searchParams.set("x-cryo-sid", peerSid);
+        url.searchParams.set("x-cryo-sid", String(peerSid));
         const peer = new WebSocket(url);
         return new Promise((resolve, reject) => {
             peer.on("open", () => {

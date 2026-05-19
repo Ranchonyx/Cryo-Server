@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 import { AckTracker } from "../Common/AckTracker/AckTracker.js";
 import { BackpressureManager } from "../BackpressureManager/BackpressureManager.js";
-import { BinaryMessageType, BufferUtil, ACKFrame, BinaryDataFrame, ErrorFrame, PingPongFrame, TXFinishFrame, TXStartFrame, TXChunkFrame, Utf8DataFrame } from "cryo-protocol";
+import { ACKFrame, BinaryDataFrame, BinaryMessageType, BufferUtil, ByeFrame, CRYO_FEATURE_MASK_TRANSACTION, CRYO_PROTOCOL_VERSION, cryoHasFeatureFlag, EndpointInfoFrame, ErrorFrame, PingPongFrame, TXChunkFrame, TXFinishFrame, TXStartFrame, Utf8DataFrame } from "cryo-protocol";
 var CloseCode;
 (function (CloseCode) {
     CloseCode[CloseCode["CLOSE_GRACEFUL"] = 4000] = "CLOSE_GRACEFUL";
@@ -25,6 +25,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     current_txid = 0;
     bytes_rx = 0;
     bytes_tx = 0;
+    receivedProtocolFeatures = 0n;
     constructor(remoteClient, remoteSocket, remoteName, backpressure_opts, extensionRegistry) {
         super();
         this.remoteClient = remoteClient;
@@ -33,15 +34,22 @@ export class CryoServerWebsocketSession extends EventEmitter {
         this.extensionRegistry = extensionRegistry;
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
         this.bp_mgr = new BackpressureManager(remoteClient, backpressure_opts, CreateDebugLogger(`CRYO_BACKPRESSURE`));
+        //set up listeners
         remoteSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
         remoteSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));
         remoteClient.on("close", this.WEBSOCKET_HandleRemoteClose.bind(this));
+        //Handle incoming ws messages
         remoteClient.on("message", async (raw) => {
             this.bytes_rx += raw.byteLength;
             this.routeFrame(raw).catch((err) => {
                 this.log(`routeFrame failed: ${err instanceof Error ? err.stack || err.message : String(err)}`);
             });
         });
+        //Send the first endpointInfo message
+        const ack = this.inc_get_ack();
+        const msg = EndpointInfoFrame.Serialize(this.sid, ack);
+        this.client_ack_tracker.Track(ack, { timestamp: Date.now(), message: msg });
+        this.Send(msg);
     }
     async routeFrame(frame) {
         const type = BufferUtil.GetType(frame);
@@ -69,6 +77,14 @@ export class CryoServerWebsocketSession extends EventEmitter {
                 return;
             case BinaryMessageType.TX_FINISH:
                 await this.HandleTxFinishMessage(frame);
+                return;
+            case BinaryMessageType.ENDPOINT_INFO:
+                await this.HandleEndpointInfoMessage(frame);
+                return;
+            case BinaryMessageType.BYE:
+                await this.HandleByeMessage(frame);
+                return;
+            case BinaryMessageType.TX_FLOW:
                 return;
             default:
                 this.log(`Unsupported binary message type ${type}!`);
@@ -189,6 +205,30 @@ export class CryoServerWebsocketSession extends EventEmitter {
         await this.Send(finish_frame);
         await this.bp_mgr.waitUntilEmpty();
     }
+    async HandleByeMessage(message) {
+        const decodedByeMessage = ByeFrame
+            .Deserialize(message);
+        const ack_id = decodedByeMessage.ack;
+        const encodedACKMessage = ACKFrame
+            .Serialize(this.Client.sessionId, ack_id);
+        await this.Send(encodedACKMessage);
+        this.Destroy(4000, decodedByeMessage.reason);
+    }
+    async HandleEndpointInfoMessage(message) {
+        const decodedInfoMessage = EndpointInfoFrame
+            .Deserialize(message);
+        const ack_id = decodedInfoMessage.ack;
+        const encodedACKMessage = ACKFrame
+            .Serialize(this.Client.sessionId, ack_id);
+        await this.Send(encodedACKMessage);
+        //Check protocol version equality and fail otherwise
+        if (CRYO_PROTOCOL_VERSION !== decodedInfoMessage.version) {
+            this.Destroy(4001, `Protocol mismatch. Client offered ${decodedInfoMessage.version}, we support ${CRYO_PROTOCOL_VERSION} !`);
+            return;
+        }
+        this.log("Got protocol features: ", this.receivedProtocolFeatures.toString(2).padStart(64));
+        this.receivedProtocolFeatures = decodedInfoMessage.features;
+    }
     /*
     * Respond to PING & PONG frames and set the client to be alive
     * */
@@ -211,6 +251,10 @@ export class CryoServerWebsocketSession extends EventEmitter {
     async HandleErrorMessage(message) {
         const decodedErrorMessage = ErrorFrame
             .Deserialize(message);
+        const ack_id = decodedErrorMessage.ack;
+        const encodedACKMessage = ACKFrame
+            .Serialize(this.Client.sessionId, ack_id);
+        await this.Send(encodedACKMessage);
         this.log(decodedErrorMessage.payload);
     }
     /*
@@ -262,6 +306,10 @@ export class CryoServerWebsocketSession extends EventEmitter {
             this.emit("message-binary", boxed_message.value);
     }
     async HandleTxStartMessage(message) {
+        if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
+            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+        }
         const decodedStartFrame = TXStartFrame
             .Deserialize(message);
         const ack_id = decodedStartFrame.ack;
@@ -280,6 +328,10 @@ export class CryoServerWebsocketSession extends EventEmitter {
         this.emit("tx-start", decodedStartFrame.txId, decodedStartFrame.txName);
     }
     async HandleTxFinishMessage(message) {
+        if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
+            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+        }
         const decodedFinishFrame = TXFinishFrame
             .Deserialize(message);
         const ack_id = decodedFinishFrame.ack;
@@ -293,6 +345,10 @@ export class CryoServerWebsocketSession extends EventEmitter {
         this.emit("tx-finish", decodedFinishFrame.txId);
     }
     async HandleTxChunkMessage(message) {
+        if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
+            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+        }
         const decodedChunkFrame = TXChunkFrame
             .Deserialize(message);
         //Handle stream
@@ -360,7 +416,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         return this.bytes_tx;
     }
     //noinspection JSUnusedGlobalSymbols
-    get id() {
+    get sid() {
         return this.Client.sessionId;
     }
     //noinspection JSUnusedGlobalSymbols
