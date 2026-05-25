@@ -504,8 +504,8 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
     private async HandleTxStartMessage(message: Buffer): Promise<void> {
         if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
-            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
-            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH - The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            return;
         }
 
         const decodedStartFrame = TXStartFrame
@@ -533,8 +533,8 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
     private async HandleTxFinishMessage(message: Buffer): Promise<void> {
         if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
-            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
-            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH - The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            return;
         }
 
         const decodedFinishFrame = TXFinishFrame
@@ -556,8 +556,8 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
     private async HandleTxChunkMessage(message: Buffer): Promise<void> {
         if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
-            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
-            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH - The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            return;
         }
 
         const decodedChunkFrame = TXChunkFrame

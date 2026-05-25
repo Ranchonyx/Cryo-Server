@@ -10,7 +10,8 @@ const typeToStringMap = {
     0: "transaction_start",
     1: "transaction_chunk",
     2: "transaction_finish",
-    3: "transaction_flow"
+    3: "transaction_flow",
+    4: "transaction_chunk_request",
 };
 export class CryoFrameInspector {
     static Inspect(message) {
