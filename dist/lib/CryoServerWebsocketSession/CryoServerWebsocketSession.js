@@ -225,6 +225,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
             const chunks = [];
             source.on("data", (chunk) => {
                 chunks.push(TXChunkFrame.Serialize(this.sid, new_txid, seq++, chunk));
+                totalSize += chunk.byteLength;
             });
             const start_ack_id = this.inc_get_ack();
             const new_txid = this.inc_get_txid();
