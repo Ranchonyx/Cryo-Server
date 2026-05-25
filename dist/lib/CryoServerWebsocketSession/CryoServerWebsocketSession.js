@@ -495,6 +495,13 @@ export class CryoServerWebsocketSession extends EventEmitter {
     get sid() {
         return this.Client.sessionId;
     }
+    async Close(reason) {
+        const ack = this.inc_get_ack();
+        const frame = ByeFrame.Serialize(this.sid, ack, reason);
+        this.client_ack_tracker.Track(ack, { message: frame, timestamp: Date.now() });
+        await this.Send(frame);
+        this.Destroy();
+    }
     //noinspection JSUnusedGlobalSymbols
     Destroy(code = 4000, message = "Closing session.") {
         this.bp_mgr?.Destroy();

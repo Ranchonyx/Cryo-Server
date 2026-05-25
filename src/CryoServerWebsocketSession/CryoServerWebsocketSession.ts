@@ -49,6 +49,8 @@ export interface ICryoServerWebsocketSessionEvents {
     "tx-fetch": (txId: number, start: number, end: number) => Promise<void>;
 }
 
+type CryoReadable = Readable & { txId: number };
+
 export interface CryoServerWebsocketSession<TStorageKeys extends string = string> {
     on<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, listener: ICryoServerWebsocketSessionEvents[U]): this;
 
@@ -68,7 +70,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     private readonly log: DebugLoggerFunction;
     private readonly client_ack_tracker: AckTracker = new AckTracker();
     private readonly storage: Partial<Record<TStorageKeys, any>> = {};
-    private readonly streams = new Map<number, Readable>;
+    private readonly streams = new Map<number, CryoReadable>;
 
     private destroyed = false;
 
@@ -241,10 +243,10 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     }
 
     //noinspection JSUnusedGlobalSymbols
-    public async WaitForStream(streamName: string = "anonymous", timeout: number = 1000): Promise<Readable> {
+    public async WaitForStream(streamName: string = "anonymous", timeout: number = 1000): Promise<CryoReadable> {
         const timeoutSig = AbortSignal.timeout(timeout);
 
-        return new Promise<Readable>((resolve, reject) => {
+        return new Promise<CryoReadable>((resolve, reject) => {
             const onTxStartListener = async (txId: number, txName: string) => {
                 if (txName === streamName) {
                     if (!this.streams.has(txId)) {
@@ -276,6 +278,16 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         });
     }
 
+    public async StreamFetchRange(stream: CryoReadable, start: number, end: number): Promise<void> {
+        const fetch_ack_id = this.inc_get_ack();
+        const fetch_frame = TXFetchFrame.Serialize(this.sid, fetch_ack_id, stream.txId, start, end);
+        this.client_ack_tracker.Track(fetch_ack_id, {
+            message: fetch_frame,
+            timestamp: Date.now()
+        });
+
+        await this.Send(fetch_frame);
+    }
 
     private async StreamPush(source: Readable, streamName: string): Promise<void> {
         const new_txid = this.inc_get_txid();
@@ -526,7 +538,9 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         stream.on("close", () => {
             this.streams.delete(decodedStartFrame.txId);
         });
-        this.streams.set(decodedStartFrame.txId, stream);
+
+        Object.defineProperty(stream, "txId", {value: decodedStartFrame.txId});
+        this.streams.set(decodedStartFrame.txId, stream as CryoReadable);
 
         this.emit("tx-start", decodedStartFrame.txId, decodedStartFrame.txName);
     }

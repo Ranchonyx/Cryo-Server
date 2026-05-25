@@ -3,6 +3,8 @@ import type http from "node:http";
 import type {Readable} from "node:stream";
 import {CRYO_FLOW_BEHAVIOUR} from "cryo-protocol";
 
+export type CryoReadable = Readable & { txId: number };
+
 /**
  * CryoServerWebsocketSession typings
  * */
@@ -36,9 +38,9 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
 
     public Stream(source: Readable, streamName?: string): Promise<void>;
 
-    public WaitForStream(streamName?: string, timeout?: number): Promise<Readable>;
+    public WaitForStream(streamName?: string, timeout?: number): Promise<CryoReadable>;
 
-    public async SetIncomingFlowControl(behaviour: CRYO_FLOW_BEHAVIOUR): Promise<void>
+    public SetIncomingFlowControl(behaviour: CRYO_FLOW_BEHAVIOUR): Promise<void>
 
     public Close(reason: string): Promise<void>;
 

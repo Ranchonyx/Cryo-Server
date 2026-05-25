@@ -164,17 +164,18 @@ This sad category of events is emitted when something about the session changes
 
 ### Public methods
 
-| Name          | Parameter                              | Description                                                       | Returns                 |
-|---------------|----------------------------------------|-------------------------------------------------------------------|-------------------------|
-| SendPing      |                                        | Sends a ping to the client session                                |                         |
-| SendUTF8      | data: string                           | Sends the passed utf8 text to the client session                  |                         |
-| SendBinary    | data: Buffer                           | Sends the passed buffer to the client session                     |                         |
-| Stream        | source: ReadableStream, name?: string  | Streams a Readable to the server                                  |                         |
-| WaitForStream | streamName?: string , timeout?: number | Waits for a named stream                                          | Promise<ReadableStream> |
-| Set           | key: string, value: any                | Sets `key` to `value` in the session's custom data store          |                         |
-| Get           | key: string                            | Retrieves the value of `key` from the session's custom data store | any                     |
-| Close         | reason: string                         | Closes the session gracefully                                     |                         |
-| Destroy       |                                        | Closes and destroys the session object                            |                         |
+| Name             | Parameter                                        | Description                                                       | Returns               |
+|------------------|--------------------------------------------------|-------------------------------------------------------------------|-----------------------|
+| SendPing         |                                                  | Sends a ping to the client session                                |                       |
+| SendUTF8         | data: string                                     | Sends the passed utf8 text to the client session                  |                       |
+| SendBinary       | data: Buffer                                     | Sends the passed buffer to the client session                     |                       |
+| Stream           | source: ReadableStream, name?: string            | Streams a Readable to the server                                  |                       |
+| WaitForStream    | streamName?: string , timeout?: number           | Waits for a named stream                                          | Promise<CryoReadable> |
+| StreamFetchRange | stream: CryoReadable, start: number, end: number | Fetches chunk start-end of a given stream                         |                       |
+| Set              | key: string, value: any                          | Sets `key` to `value` in the session's custom data store          |                       |
+| Get              | key: string                                      | Retrieves the value of `key` from the session's custom data store | any                   |
+| Close            | reason: string                                   | Closes the session gracefully                                     |                       |
+| Destroy          |                                                  | Closes and destroys the session object                            |                       |
 
 ## Cryo-Server / Extension interface
 
