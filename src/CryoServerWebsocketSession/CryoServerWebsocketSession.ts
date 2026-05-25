@@ -321,16 +321,16 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
     private async StreamPull(source: Readable, streamName: string): Promise<void> {
         return new Promise<void>(async (resolve, reject) => {
-            let totalSize = 0;
-            const chunks: Buffer[] = [];
-
-            source.on("data", (chunk: Buffer) => {
-                chunks.push(TXChunkFrame.Serialize(this.sid, new_txid, seq++, chunk));
-                totalSize += chunk.byteLength;
-            });
-
             const start_ack_id = this.inc_get_ack();
             const new_txid = this.inc_get_txid();
+            const chunks: Buffer[] = [];
+            let totalSize = 0;
+            let seq = 0;
+
+            for await(const chunk of source as AsyncIterable<Buffer>) {
+                chunks.push(TXChunkFrame.Serialize(this.sid, new_txid, seq++, chunk));
+                totalSize += chunk.byteLength;
+            }
 
             const start_frame = TXStartFrame.Serialize(this.sid, start_ack_id, new_txid, streamName, totalSize);
             this.client_ack_tracker.Track(start_ack_id, {
@@ -339,7 +339,6 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
             });
             await this.Send(start_frame);
 
-            let seq = 0;
             const fetchHandler = async (txId: number, start: number, end: number) => {
                 if (txId !== new_txid)
                     return;
