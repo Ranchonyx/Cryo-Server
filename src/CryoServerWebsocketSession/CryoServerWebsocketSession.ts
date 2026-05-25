@@ -675,6 +675,15 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         return this.Client.sessionId;
     }
 
+    public async Close(reason: string) {
+        const ack = this.inc_get_ack();
+        const frame = ByeFrame.Serialize(this.sid, ack, reason);
+        this.client_ack_tracker.Track(ack, {message: frame, timestamp: Date.now()});
+        await this.Send(frame);
+
+        this.Destroy();
+    }
+
     //noinspection JSUnusedGlobalSymbols
     public Destroy(code: number = 4000, message: string = "Closing session.") {
         this.bp_mgr?.Destroy();

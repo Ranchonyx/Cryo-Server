@@ -40,6 +40,8 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
 
     public async SetIncomingFlowControl(behaviour: CRYO_FLOW_BEHAVIOUR): Promise<void>
 
+    public Close(reason: string): Promise<void>;
+
     public Destroy(): void;
 
     public Set(key: TStorageKeys, value: any): void;

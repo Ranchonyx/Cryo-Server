@@ -173,6 +173,7 @@ This sad category of events is emitted when something about the session changes
 | WaitForStream | streamName?: string , timeout?: number | Waits for a named stream                                          | Promise<ReadableStream> |
 | Set           | key: string, value: any                | Sets `key` to `value` in the session's custom data store          |                         |
 | Get           | key: string                            | Retrieves the value of `key` from the session's custom data store | any                     |
+| Close         | reason: string                         | Closes the session gracefully                                     |                         |
 | Destroy       |                                        | Closes and destroys the session object                            |                         |
 
 ## Cryo-Server / Extension interface
