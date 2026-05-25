@@ -135,7 +135,6 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
             return;
         }
 
-
         //Trim "Bearer" from "Bearer ..."
         const clientBearerToken = authorization.slice(7);
 

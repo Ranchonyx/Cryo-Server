@@ -1,30 +1,10 @@
-# Cryo-Server
+# Cryo
 
-#### Part of the Cryo Ecosystem
+Cryo is a small binary protocol for sending arbitrary messages, large data and real-time information over WebSocket.
+It uses fixed frame types for acknowledgements, heartbeats, UTF-8 text, binary payloads and streamed transactions.
 
-```
- █████ ██████  ██   ██  █████  
-██     ██   ██  ██ ██  ██   ██ 
-██     ██████    ███   ██   ██ 
-██     ██ ██     ██    ██   ██ 
-██     ██  ██    ██    ██   ██ 
- █████ ██   ██   ██     █████  
-                Server implementation
-```
-
----
-
-## Cryo / Overview
-
-Cryo is a lightweight, efficient Websocket framework intended for building real-time systems
-
-Client implementations are available for:
-
-- **TypeScript / JavaScript** under **Node.Js**
-- **TypeScript / JavaScript** under **modern Browsers**
-- **C#** under **.NET 8.0**
-
-A server implementation is available for **TypeScript / JavaScript** under **Node.Js**
+This is a server implementation of the Cryo protocol specified
+at [Cryo-Protocol](https://github.com/Ranchonyx/Cryo-Protocol)
 
 ## Cryo-Server / Overview
 
@@ -184,14 +164,16 @@ This sad category of events is emitted when something about the session changes
 
 ### Public methods
 
-| Name       | Parameter               | Description                                                       | Returns |
-|------------|-------------------------|-------------------------------------------------------------------|---------|
-| SendPing   |                         | Sends a ping to the client session                                |         |
-| SendUTF8   | data: string            | Sends the passed utf8 text to the client session                  |         |
-| SendBinary | data: Buffer            | Sends the passed buffer to the client session                     |         |
-| Set        | key: string, value: any | Sets `key` to `value` in the session's custom data store          |         |
-| Get        | key: string             | Retrieves the value of `key` from the session's custom data store | any     |
-| Destroy    |                         | Closes and destroys the session object                            |         |
+| Name          | Parameter                              | Description                                                       | Returns                 |
+|---------------|----------------------------------------|-------------------------------------------------------------------|-------------------------|
+| SendPing      |                                        | Sends a ping to the client session                                |                         |
+| SendUTF8      | data: string                           | Sends the passed utf8 text to the client session                  |                         |
+| SendBinary    | data: Buffer                           | Sends the passed buffer to the client session                     |                         |
+| Stream        | source: ReadableStream, name?: string  | Streams a Readable to the server                                  |                         |
+| WaitForStream | streamName?: string , timeout?: number | Waits for a named stream                                          | Promise<ReadableStream> |
+| Set           | key: string, value: any                | Sets `key` to `value` in the session's custom data store          |                         |
+| Get           | key: string                            | Retrieves the value of `key` from the session's custom data store | any                     |
+| Destroy       |                                        | Closes and destroys the session object                            |                         |
 
 ## Cryo-Server / Extension interface
 

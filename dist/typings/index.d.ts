@@ -1,7 +1,7 @@
 import type {EventEmitter} from "node:events";
-import type {UUID} from "node:crypto";
 import type http from "node:http";
 import type {Readable} from "node:stream";
+import {CRYO_FLOW_BEHAVIOUR} from "cryo-protocol";
 
 /**
  * CryoServerWebsocketSession typings
@@ -18,7 +18,7 @@ export declare interface ICryoServerWebsocketSessionEvents {
 }
 
 export declare type CryoWebsocketSessionDefaultMetadata = {
-    sid: UUID;
+    sid: bigint;
 }
 
 export declare interface CryoServerWebsocketSession<TStorageKeys extends string = string> {
@@ -38,13 +38,15 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
 
     public WaitForStream(streamName?: string, timeout?: number): Promise<Readable>;
 
+    public async SetIncomingFlowControl(behaviour: CRYO_FLOW_BEHAVIOUR): Promise<void>
+
     public Destroy(): void;
 
     public Set(key: TStorageKeys, value: any): void;
 
     public Get<T>(key: TStorageKeys): T;
 
-    public get id(): string;
+    public get id(): bigint;
 }
 
 

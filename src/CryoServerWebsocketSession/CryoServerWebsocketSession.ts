@@ -14,11 +14,18 @@ import {
     ACKFrame,
     BinaryDataFrame,
     BinaryMessageType,
-    BufferUtil, ByeFrame, CRYO_FEATURE_MASK_TRANSACTION, CRYO_PROTOCOL_VERSION, cryoHasFeatureFlag, EndpointInfoFrame,
+    BufferUtil,
+    ByeFrame,
+    CRYO_FEATURE_MASK_TRANSACTION,
+    CRYO_FLOW_BEHAVIOUR,
+    CRYO_PROTOCOL_VERSION,
+    cryoHasFeatureFlag,
+    EndpointInfoFrame,
     ErrorFrame,
     PingPongFrame,
     TXChunkFrame,
-    TXFinishFrame,
+    TXFetchFrame,
+    TXFinishFrame, TXFlowFrame,
     TXStartFrame,
     Utf8DataFrame
 } from "cryo-protocol";
@@ -39,6 +46,7 @@ export interface ICryoServerWebsocketSessionEvents {
     "tx-start": (txId: number, txName: string) => Promise<void>;
     "tx-chunk": (txId: number, data: Buffer) => Promise<void>;
     "tx-finish": (txId: number) => Promise<void>;
+    "tx-fetch": (txId: number, start: number, end: number) => Promise<void>;
 }
 
 export interface CryoServerWebsocketSession<TStorageKeys extends string = string> {
@@ -71,6 +79,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     private bytes_tx = 0;
 
     private receivedProtocolFeatures: bigint = 0n;
+    private outgoingFlowControl: CRYO_FLOW_BEHAVIOUR = CRYO_FLOW_BEHAVIOUR.TX_PUSH;
 
     public constructor(private remoteClient: ws & SocketType,
                        private remoteSocket: Duplex,
@@ -139,6 +148,10 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
                 await this.HandleByeMessage(frame);
                 return;
             case BinaryMessageType.TX_FLOW:
+                await this.HandleTxFlowMessage(frame);
+                return;
+            case BinaryMessageType.TX_FETCH:
+                await this.HandleTxFetchMessage(frame);
                 return;
             default:
                 this.log(`Unsupported binary message type ${type}!`);
@@ -263,9 +276,8 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         });
     }
 
-    //noinspection JSUnusedGlobalSymbols
-    public async Stream(source: Readable, streamName: string = "anonymous") {
 
+    private async StreamPush(source: Readable, streamName: string): Promise<void> {
         const new_txid = this.inc_get_txid();
 
         //Send tx_start
@@ -278,8 +290,9 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         await this.Send(start_frame);
 
         //Send tx_chunk
+        let seq = 0;
         for await(const chunk of source) {
-            const chunk_frame = TXChunkFrame.Serialize(this.Client.sessionId, new_txid, chunk);
+            const chunk_frame = TXChunkFrame.Serialize(this.Client.sessionId, new_txid, seq++, chunk);
             await this.Send(chunk_frame);
         }
 
@@ -292,6 +305,72 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         });
         await this.Send(finish_frame);
         await this.bp_mgr.waitUntilEmpty();
+    }
+
+    private async StreamPull(source: Readable, streamName: string): Promise<void> {
+        return new Promise<void>(async (resolve, reject) => {
+            let totalSize = 0;
+            const chunks: Buffer[] = [];
+
+            source.on("data", (chunk: Buffer) => {
+                chunks.push(TXChunkFrame.Serialize(this.sid, new_txid, seq++, chunk));
+            });
+
+            const start_ack_id = this.inc_get_ack();
+            const new_txid = this.inc_get_txid();
+
+            const start_frame = TXStartFrame.Serialize(this.sid, start_ack_id, new_txid, streamName, totalSize);
+            this.client_ack_tracker.Track(start_ack_id, {
+                message: start_frame,
+                timestamp: Date.now()
+            });
+            await this.Send(start_frame);
+
+            let seq = 0;
+            const fetchHandler = async (txId: number, start: number, end: number) => {
+                if (txId !== new_txid)
+                    return;
+
+                for (let i = start; i < end; i++) {
+                    const chunk_frame = TXChunkFrame.Serialize(this.sid, new_txid, seq++, chunks[i]);
+                    await this.Send(chunk_frame);
+                }
+
+                if (end >= chunks.length) {
+                    const finish_ack_id = this.inc_get_ack();
+                    const finish_frame = TXFinishFrame.Serialize(this.sid, finish_ack_id, new_txid);
+                    this.client_ack_tracker.Track(finish_ack_id, {
+                        message: finish_frame,
+                        timestamp: Date.now()
+                    });
+
+                    await this.Send(finish_frame);
+                    this.removeListener("tx-fetch", fetchHandler);
+                }
+            }
+
+            this.addListener("tx-fetch", fetchHandler);
+        });
+    }
+
+    //noinspection JSUnusedGlobalSymbols
+    public async Stream(source: Readable, streamName: string = "anonymous") {
+        if (this.outgoingFlowControl !== CRYO_FLOW_BEHAVIOUR.TX_PUSH)
+            return this.StreamPull(source, streamName);
+
+        return this.StreamPush(source, streamName);
+    }
+
+    //noinspection JSUnusedGlobalSymbols
+    public async SetIncomingFlowControl(behaviour: CRYO_FLOW_BEHAVIOUR) {
+        const flow_ack_id = this.inc_get_ack();
+        const flow_frame = TXFlowFrame.Serialize(this.sid, flow_ack_id, behaviour);
+        this.client_ack_tracker.Track(flow_ack_id, {
+            message: flow_frame,
+            timestamp: Date.now()
+        });
+
+        await this.Send(flow_frame);
     }
 
     private async HandleByeMessage(message: Buffer): Promise<void> {
@@ -491,6 +570,32 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         this.streams.get(decodedChunkFrame.txId)!.push(decodedChunkFrame.payload);
 
         this.emit("tx-chunk", decodedChunkFrame.txId, decodedChunkFrame.payload);
+    }
+
+    private async HandleTxFlowMessage(message: Buffer): Promise<void> {
+        const decodedFlowFrame = TXFlowFrame
+            .Deserialize(message);
+
+        const ack_id = decodedFlowFrame.ack;
+        const encodedACKMessage = ACKFrame
+            .Serialize(this.sid, ack_id);
+
+        await this.Send(encodedACKMessage);
+
+        this.outgoingFlowControl = decodedFlowFrame.behaviour;
+    }
+
+    private async HandleTxFetchMessage(message: Buffer): Promise<void> {
+        const decodedFetchFrame = TXFetchFrame
+            .Deserialize(message);
+
+        const ack_id = decodedFetchFrame.ack;
+        const encodedACKMessage = ACKFrame
+            .Serialize(this.sid, ack_id);
+
+        await this.Send(encodedACKMessage);
+
+        this.emit("tx-fetch", decodedFetchFrame.txId, decodedFetchFrame.start, decodedFetchFrame.end);
     }
 
     private TranslateCloseCode(code: number): string {
