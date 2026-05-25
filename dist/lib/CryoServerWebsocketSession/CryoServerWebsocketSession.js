@@ -365,8 +365,8 @@ export class CryoServerWebsocketSession extends EventEmitter {
     }
     async HandleTxStartMessage(message) {
         if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
-            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
-            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH - The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            return;
         }
         const decodedStartFrame = TXStartFrame
             .Deserialize(message);
@@ -387,8 +387,8 @@ export class CryoServerWebsocketSession extends EventEmitter {
     }
     async HandleTxFinishMessage(message) {
         if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
-            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
-            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH - The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            return;
         }
         const decodedFinishFrame = TXFinishFrame
             .Deserialize(message);
@@ -404,8 +404,8 @@ export class CryoServerWebsocketSession extends EventEmitter {
     }
     async HandleTxChunkMessage(message) {
         if (!cryoHasFeatureFlag(this.receivedProtocolFeatures, CRYO_FEATURE_MASK_TRANSACTION)) {
-            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH");
-            throw new Error("The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            this.Destroy(4002, "PROTOCOL FEATURE MISMATCH - The connected client does not support features in the namespace 'Cryo.Transaction' !");
+            return;
         }
         const decodedChunkFrame = TXChunkFrame
             .Deserialize(message);
