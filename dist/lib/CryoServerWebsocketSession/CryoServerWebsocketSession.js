@@ -184,6 +184,15 @@ export class CryoServerWebsocketSession extends EventEmitter {
             timeoutSig.addEventListener("abort", onAbort);
         });
     }
+    async StreamFetchRange(stream, start, end) {
+        const fetch_ack_id = this.inc_get_ack();
+        const fetch_frame = TXFetchFrame.Serialize(this.sid, fetch_ack_id, stream.txId, start, end);
+        this.client_ack_tracker.Track(fetch_ack_id, {
+            message: fetch_frame,
+            timestamp: Date.now()
+        });
+        await this.Send(fetch_frame);
+    }
     async StreamPush(source, streamName) {
         const new_txid = this.inc_get_txid();
         //Send tx_start
@@ -382,6 +391,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         stream.on("close", () => {
             this.streams.delete(decodedStartFrame.txId);
         });
+        Object.defineProperty(stream, "txId", { value: decodedStartFrame.txId });
         this.streams.set(decodedStartFrame.txId, stream);
         this.emit("tx-start", decodedStartFrame.txId, decodedStartFrame.txName);
     }

@@ -326,6 +326,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
             source.on("data", (chunk: Buffer) => {
                 chunks.push(TXChunkFrame.Serialize(this.sid, new_txid, seq++, chunk));
+                totalSize += chunk.byteLength;
             });
 
             const start_ack_id = this.inc_get_ack();
