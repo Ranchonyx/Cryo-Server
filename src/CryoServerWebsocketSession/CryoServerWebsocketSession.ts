@@ -167,7 +167,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     private async send(outgoing_message: Buffer, payload?: string | Buffer) {
         let ackPromise: PromiseWithResolvers<void> | null = null;
 
-        if (this.webSocket.readyState === WebSocket.CLOSING || this.webSocket.readyState === WebSocket.CLOSED)
+        if (this.webSocket.readyState === ws.CLOSING || this.webSocket.readyState === ws.CLOSED)
             return Promise.reject("Invalid socket state.");
 
         //Create a pending message with a new ack number and queue it for acknowledgement by the client
@@ -284,7 +284,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     //noinspection JSUnusedGlobalSymbols
     private Destroy(code: number = 4000, message: string = "Closing session.") {
         this.bp_mgr?.Destroy();
-        this.client_ack_tracker.Destroy();
+        this.client_ack_tracker?.Destroy();
         try {
             this.log(`Teardown of session. Code=${code}, reason=${message}`);
             this.webSocket.close(code, message);
