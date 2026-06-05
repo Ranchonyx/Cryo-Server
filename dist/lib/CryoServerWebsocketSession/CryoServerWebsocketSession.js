@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import ws from "ws";
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 import { AckTracker } from "../Common/AckTracker/AckTracker.js";
 import { BackpressureManager } from "../BackpressureManager/BackpressureManager.js";
@@ -96,7 +97,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     }
     async send(outgoing_message, payload) {
         let ackPromise = null;
-        if (this.webSocket.readyState === WebSocket.CLOSING || this.webSocket.readyState === WebSocket.CLOSED)
+        if (this.webSocket.readyState === ws.CLOSING || this.webSocket.readyState === ws.CLOSED)
             return Promise.reject("Invalid socket state.");
         //Create a pending message with a new ack number and queue it for acknowledgement by the client
         const type = BufferUtil.GetType(outgoing_message);
@@ -190,7 +191,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     //noinspection JSUnusedGlobalSymbols
     Destroy(code = 4000, message = "Closing session.") {
         this.bp_mgr?.Destroy();
-        this.client_ack_tracker.Destroy();
+        this.client_ack_tracker?.Destroy();
         try {
             this.log(`Teardown of session. Code=${code}, reason=${message}`);
             this.webSocket.close(code, message);

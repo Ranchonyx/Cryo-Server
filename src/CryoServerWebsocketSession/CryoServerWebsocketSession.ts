@@ -48,6 +48,7 @@ enum CloseCode {
 }
 
 type SocketType = Duplex & { isAlive: boolean, sessionId: bigint };
+
 export class CryoServerWebsocketSession<TStorageKeys extends string = string> extends EventEmitter implements CryoServerWebsocketSession<TStorageKeys> {
     private readonly bp_mgr: BackpressureManager;
     private readonly log: DebugLoggerFunction;
@@ -165,6 +166,9 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     }
 
     private async send(outgoing_message: Buffer, payload?: string | Buffer) {
+        if (this.destroyed)
+            return;
+
         let ackPromise: PromiseWithResolvers<void> | null = null;
 
         if (this.webSocket.readyState === ws.CLOSING || this.webSocket.readyState === ws.CLOSED)
