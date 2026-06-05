@@ -96,6 +96,8 @@ export class CryoServerWebsocketSession extends EventEmitter {
         }
     }
     async send(outgoing_message, payload) {
+        if (this.destroyed)
+            return;
         let ackPromise = null;
         if (this.webSocket.readyState === ws.CLOSING || this.webSocket.readyState === ws.CLOSED)
             return Promise.reject("Invalid socket state.");

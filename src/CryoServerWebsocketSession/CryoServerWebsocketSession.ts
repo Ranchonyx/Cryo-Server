@@ -171,9 +171,6 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
 
         let ackPromise: PromiseWithResolvers<void> | null = null;
 
-        if (this.webSocket.readyState === ws.CLOSING || this.webSocket.readyState === ws.CLOSED)
-            return Promise.reject("Invalid socket state.");
-
         //Create a pending message with a new ack number and queue it for acknowledgement by the client
         const type = BufferUtil.GetType(outgoing_message);
         if (
