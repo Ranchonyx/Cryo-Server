@@ -13,6 +13,7 @@ const typeToStringMap: Record<BinaryMessageType, string> = {
     2: "transaction_finish",
     3: "transaction_flow",
     4: "transaction_chunk_request",
+    5: "transaction_cancel",
 }
 
 export class CryoFrameInspector {
@@ -33,6 +34,8 @@ export class CryoFrameInspector {
                     return `[type=${type_str}, sid=${sid},txid=${BufferUtil.Transaction.GetChunkTxId(message)},payload[0..15]=${BufferUtil.Transaction.GetChunkPayload(message, "hex").substring(0, 0xf)}]`;
                 case BinaryMessageType.TX_FLOW:
                     return `[type=${type_str}, sid=${sid},ack=${ack},behaviour=${message.readUint8(10) === 0 ? "PUSH" : "PULL"}]`;
+                case BinaryMessageType.TX_CANCEL:
+                    return `[type=${type_str}, sid=${sid},ack=${ack},txid=${BufferUtil.Transaction.GetTxId(message)}]`;
             }
             throw new Error("Unknown type " + type);
         } else {

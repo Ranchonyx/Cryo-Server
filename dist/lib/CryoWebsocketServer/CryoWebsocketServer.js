@@ -120,11 +120,11 @@ export class CryoWebsocketServer extends EventEmitter {
     async Heartbeat() {
         for (const session of this.sessions) {
             //Assert that the socket has an "isAlive" property and if so, cast the "Client" as having this property
-            if (!session.Client.isAlive) {
-                this.log(`Terminating dead client session ${session.Client.sessionId}`);
-                const sIdx = this.sessions.findIndex(s => s.Client.sessionId === session.Client.sessionId);
+            if (!session.webSocket.isAlive) {
+                this.log(`Terminating dead client session ${session.webSocket.sessionId}`);
+                const sIdx = this.sessions.findIndex(s => s.webSocket.sessionId === session.webSocket.sessionId);
                 const retrievedSession = this.sessions.splice(sIdx, 1)[0];
-                retrievedSession.Destroy(4001, "Disconnecting session due to not responding to ping frames.");
+                await retrievedSession.Close("Disconnecting session due to not responding to ping frames.");
                 continue;
             }
             //Also do housekeeping in the ACK tracker of each client
@@ -133,8 +133,8 @@ export class CryoWebsocketServer extends EventEmitter {
             session.emit("stat-rtt", session_tracker.rtt);
             session.emit("stat-bytes-tx", session.tx);
             session.emit("stat-bytes-rx", session.rx);
-            session.Client.isAlive = false;
-            await session.Ping();
+            session.webSocket.isAlive = false;
+            await session.base.Ping();
         }
     }
     /**
@@ -171,7 +171,7 @@ export class CryoWebsocketServer extends EventEmitter {
         this.WebsocketHeartbeatInterval.unref();
         clearInterval(this.WebsocketHeartbeatInterval);
         for (const session of this.sessions)
-            session.Destroy(4000, "Server shutdown.");
+            session.Close("Server shutdown.");
         this.ws_server.removeAllListeners();
         this.ws_server.close();
     }

@@ -4,6 +4,7 @@ import {CryoFrameInspector} from "../CryoFrameInspector/CryoFrameInspector.js";
 type PendingBinaryMessage = {
     timestamp: number;
     message: Buffer;
+    ackPromise?: PromiseWithResolvers<void>;
     payload?: string | Buffer;
 }
 
@@ -36,12 +37,6 @@ export class AckTracker {
         this.pending.delete(ack);
         return maybe_ack;
     }
-
-    /*
-        public Has(ack: number): boolean {
-            return this.pending.has(ack);
-        }
-    */
 
     public Sweep(): number {
         const now = Date.now();

@@ -13,6 +13,7 @@ import {ICryoExtension} from "../CryoExtension/CryoExtension.js";
 import {CryoExtensionRegistry} from "../CryoExtension/CryoExtensionRegistry.js";
 import {BackpressureProfile, BackpressureOpts} from "../BackpressureManager/BackpressureManager.js";
 import {cryoNewId} from "cryo-protocol";
+import * as wasi from "node:wasi";
 
 export interface SSLOptions {
     key: Buffer;
@@ -187,12 +188,12 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         for (const session of this.sessions) {
             //Assert that the socket has an "isAlive" property and if so, cast the "Client" as having this property
 
-            if (!session.Client.isAlive) {
-                this.log(`Terminating dead client session ${session.Client.sessionId}`);
+            if (!session.webSocket.isAlive) {
+                this.log(`Terminating dead client session ${session.webSocket.sessionId}`);
 
-                const sIdx = this.sessions.findIndex(s => s.Client.sessionId === session.Client.sessionId);
+                const sIdx = this.sessions.findIndex(s => s.webSocket.sessionId === session.webSocket.sessionId);
                 const retrievedSession = this.sessions.splice(sIdx, 1)[0];
-                retrievedSession.Destroy(4001, "Disconnecting session due to not responding to ping frames.");
+                await retrievedSession.Close("Disconnecting session due to not responding to ping frames.");
 
                 continue;
             }
@@ -204,8 +205,8 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
             session.emit("stat-bytes-tx", session.tx);
             session.emit("stat-bytes-rx", session.rx);
 
-            session.Client.isAlive = false;
-            await session.Ping();
+            session.webSocket.isAlive = false;
+            await session.base.Ping();
         }
     }
 
@@ -251,7 +252,7 @@ export class CryoWebsocketServer extends EventEmitter implements CryoWebsocketSe
         clearInterval(this.WebsocketHeartbeatInterval);
 
         for (const session of this.sessions)
-            session.Destroy(4000, "Server shutdown.");
+            session.Close("Server shutdown.");
 
         this.ws_server.removeAllListeners();
         this.ws_server.close();

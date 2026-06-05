@@ -7,7 +7,7 @@ type Box<T> = { value: T }
 type ExtensionFunctionResult = { should_emit: boolean, error?: unknown };
 const log = CreateDebugLogger("CRYO_EXTENSION");
 
-class CryoExtensionExecutor {
+export class CryoExtensionExecutor {
     public constructor(private session: CryoServerWebsocketSession, private registry: CryoExtensionRegistry) {
     }
 

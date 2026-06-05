@@ -32,6 +32,13 @@ export interface ICryoExtension {
     before_send_utf8?(session: CryoServerWebsocketSession, outgoing_message: Box<string>): Promise<boolean>;
 
     /**
+     * Executed before an error message is sent to the client session
+     * @param session - The cryo websocket session
+     * @param outgoing_message - The error message to be sent to the client
+     * */
+    before_send_error?(session: CryoServerWebsocketSession, outgoing_message: Box<string>): Promise<boolean>;
+
+    /**
      * Executed after a binary message is received from the client, but before the session can emit the `message-binary` event
      * @param session - The cryo websocket session
      * @param incoming_message - The incoming binary message from the client
@@ -44,6 +51,13 @@ export interface ICryoExtension {
      * @param incoming_message - The incoming text message from the client
      * */
     on_receive_utf8?(session: CryoServerWebsocketSession, incoming_message: Box<string>): Promise<boolean>;
+
+    /**
+     * Executed after an error message is received from the client, but before the session can emit the `message-error` event
+     * @param session - The cryo websocket session
+     * @param incoming_message - The incoming error message from the client
+     * */
+    on_receive_error?(session: CryoServerWebsocketSession, incoming_message: Box<string>): Promise<boolean>;
 
     /**
      * The unique name of this extension

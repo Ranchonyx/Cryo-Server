@@ -1,6 +1,6 @@
 import { CreateDebugLogger } from "../Common/Util/CreateDebugLogger.js";
 const log = CreateDebugLogger("CRYO_EXTENSION");
-class CryoExtensionExecutor {
+export class CryoExtensionExecutor {
     session;
     registry;
     constructor(session, registry) {

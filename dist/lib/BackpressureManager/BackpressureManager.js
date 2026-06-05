@@ -24,6 +24,9 @@ const BACKPRESSURE_PROFILES = {
         MAX_QUEUE_SIZE: 4096,
     },
 };
+/*
+* Absolutely satanic piece of software I wrote while high on kush and using chat gpt 4 for small parts in the drop policies under try_flush
+* */
 export class BackpressureManager {
     ws;
     log;
@@ -178,7 +181,8 @@ export class BackpressureManager {
                 const item = this.queue.shift();
                 Guard.CastAssert(item, item !== undefined, "queued was undefined!");
                 this.queued_bytes -= item.buffer.byteLength;
-                this.ws.send(item.buffer, { binary: true }, () => {
+                this.ws.send(item.buffer, { binary: true }, (err) => {
+                    this.log(`Error during websocket send() call`, err);
                 });
             }
         }
@@ -190,6 +194,8 @@ export class BackpressureManager {
         this.destroyed = true;
         if (this.stat_log_tick)
             clearInterval(this.stat_log_tick);
+        if (this.retry_tick)
+            clearInterval(this.retry_tick);
         this.stat_log_tick = null;
         this.queue.length = 0;
         this.queued_bytes = 0;

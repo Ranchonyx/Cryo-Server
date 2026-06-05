@@ -2,6 +2,10 @@ import type {EventEmitter} from "node:events";
 import type http from "node:http";
 import type {Readable} from "node:stream";
 import {CRYO_FLOW_BEHAVIOUR} from "cryo-protocol";
+import {CryoBaseManager} from "../../src/CryoServerWebsocketSession/Namespaces/Cryo.Base";
+import {CryoTransactionManager} from "../../src/CryoServerWebsocketSession/Namespaces/Cryo.Transaction";
+import {CryoExtensionExecutor} from "../../src/CryoExtension/CryoExtensionRegistry";
+import {AckTracker} from "../../src/Common/AckTracker/AckTracker";
 
 export type CryoReadable = Readable & { txId: number };
 
@@ -11,11 +15,14 @@ export type CryoReadable = Readable & { txId: number };
 export declare interface ICryoServerWebsocketSessionEvents {
     "message-utf8": (message: string) => Promise<void>;
     "message-binary": (message: Buffer) => Promise<void>;
+    "message-error": (message: string) => Promise<void>;
+
     "stat-rtt": (stat: number) => Promise<void>;
     "stat-ack-timeout": (stat: number) => Promise<void>;
     "stat-bytes-rx": (stat: number) => Promise<void>;
     "stat-bytes-tx": (stat: number) => Promise<void>;
 
+    "connected": () => void;
     "closed": () => void;
 }
 
@@ -29,22 +36,63 @@ export declare interface CryoServerWebsocketSession<TStorageKeys extends string 
     emit<U extends keyof ICryoServerWebsocketSessionEvents>(event: U, ...args: Parameters<ICryoServerWebsocketSessionEvents[U]>): boolean;
 }
 
-export declare class CryoServerWebsocketSession<TStorageKeys extends string = string> extends EventEmitter implements CryoServerWebsocketSession<TStorageKeys> {
-    public SendPing(): Promise<void>;
+export declare class CryoBaseManager {
+    /**
+     * Send a ping to the client
+     * */
+    public Ping(): Promise<void>;
 
+    /**
+     * Send a UTF8 message to the client
+     * */
     public SendUTF8(message: string): Promise<void>;
 
-    public SendBinary(message: Buffer): Promise<void>
+    /**
+     * Send a binary Message to the client
+     * */
+    public SendBinary(message: Buffer): Promise<void>;
 
+    /**
+     * Send an error message to the client
+     * */
+    public SendError(message: string): Promise<void>;
+}
+
+export declare class CryoTransactionManager {
+    /**
+     * Stream a readable to the client
+     * @param source The {@link Readable} object to be streamed
+     * @param streamName Optionally, the name of the stream
+     * */
     public Stream(source: Readable, streamName?: string): Promise<void>;
 
+    /**
+     * Wait for an incoming stream
+     * @param streamName The name of the stream to wait for - leave empty to wait for an unnamed stream
+     * @param timeout The amount of milliseconds to wait until the operation should be cancelled if no matching stream was received
+     * */
     public WaitForStream(streamName?: string, timeout?: number): Promise<CryoReadable>;
 
-    public SetIncomingFlowControl(behaviour: CRYO_FLOW_BEHAVIOUR): Promise<void>
+    /**
+     * Request a range of chunks from the stream - used when flow control = TX_PULL
+     * @param stream The readable object returned by {@link WaitForStream}
+     * @param start The starting index of chunks to be requested
+     * @param end The ending index of chunks to be requested
+     * */
+    public StreamRequestRange(stream: CryoReadable, start: number, end: number): Promise<void>;
+
+    /**
+     * Sets the flow control for this session
+     * @param behaviour The flow control behaviour to set the client to
+     * */
+    public SetIncomingFlowControl(behaviour: CRYO_FLOW_BEHAVIOUR): Promise<void>;
+}
+
+export declare class CryoServerWebsocketSession<TStorageKeys extends string = string> extends EventEmitter implements CryoServerWebsocketSession<TStorageKeys> {
+    public base: CryoBaseManager;
+    public stream: CryoTransactionManager;
 
     public Close(reason: string): Promise<void>;
-
-    public Destroy(): void;
 
     public Set(key: TStorageKeys, value: any): void;
 
@@ -52,7 +100,6 @@ export declare class CryoServerWebsocketSession<TStorageKeys extends string = st
 
     public get id(): bigint;
 }
-
 
 type Box<T> = { value: T };
 
@@ -85,6 +132,13 @@ export declare interface ICryoExtension {
     before_send_utf8?(session: CryoServerWebsocketSession, outgoing_message: Box<string>): Promise<boolean>;
 
     /**
+     * Executed before an error message is sent to the client session
+     * @param session - The cryo websocket session
+     * @param outgoing_message - The error message to be sent to the client
+     * */
+    before_send_error?(session: CryoServerWebsocketSession, outgoing_message: Box<string>): Promise<boolean>;
+
+    /**
      * Executed after a binary message is received from the client, but before the session can emit the `message-binary` event
      * @param session - The cryo websocket session
      * @param incoming_message - The incoming binary message from the client
@@ -97,6 +151,13 @@ export declare interface ICryoExtension {
      * @param incoming_message - The incoming text message from the client
      * */
     on_receive_utf8?(session: CryoServerWebsocketSession, incoming_message: Box<string>): Promise<boolean>;
+
+    /**
+     * Executed after an error message is received from the client, but before the session can emit the `message-error` event
+     * @param session - The cryo websocket session
+     * @param incoming_message - The incoming error message from the client
+     * */
+    on_receive_error?(session: CryoServerWebsocketSession, incoming_message: Box<string>): Promise<boolean>;
 
     /**
      * The unique name of this extension

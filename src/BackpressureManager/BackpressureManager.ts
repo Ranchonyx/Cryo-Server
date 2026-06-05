@@ -5,7 +5,6 @@ import type {Socket} from "node:net";
 import type {DebugLoggerFunction} from "node:util";
 import {BufferUtil, BinaryMessageType} from "cryo-protocol"
 
-
 export type DropPolicy = "drop-oldest" | "drop-newest" | "dedupe-latest";
 
 export interface BackpressureOpts {
@@ -57,6 +56,9 @@ interface FrameQueueItem {
     ts: number;
 }
 
+/*
+* Absolutely satanic piece of software I wrote while high on kush and using chat gpt 4 for small parts in the drop policies under try_flush
+* */
 export class BackpressureManager {
     private queue: FrameQueueItem[] = []
     private queued_bytes = 0;
@@ -243,7 +245,8 @@ export class BackpressureManager {
 
                 this.queued_bytes -= item!.buffer.byteLength;
 
-                this.ws.send(item!.buffer, {binary: true}, () => {
+                this.ws.send(item!.buffer, {binary: true}, (err) => {
+                    this.log(`Error during websocket send() call`, err);
                 });
             }
         } finally {
@@ -256,6 +259,9 @@ export class BackpressureManager {
 
         if (this.stat_log_tick)
             clearInterval(this.stat_log_tick);
+
+        if (this.retry_tick)
+            clearInterval(this.retry_tick);
 
         this.stat_log_tick = null;
         this.queue.length = 0;
