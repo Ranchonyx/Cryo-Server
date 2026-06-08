@@ -114,10 +114,7 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
                 });
         });
 
-        //Send the first endpointInfo message
-        const msg = EndpointInfoFrame.Serialize(this.sid, this.next_ack());
-        this.send(msg);
-
+        //Handler first
         this.base.on("ready", () => {
             this.stream = new CryoTransactionManager(
                 this.sid,
@@ -128,9 +125,13 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
                 () => this.receivedProtocolFeatures,
                 this.bp_mgr.waitUntilEmpty.bind(this.bp_mgr)
             );
+            this.emit("connected");
         });
 
-        this.emit("connected");
+
+        //Then send the first endpointInfo message
+        const msg = EndpointInfoFrame.Serialize(this.sid, this.next_ack());
+        this.send(msg);
     }
 
     private async routeFrame(frame: Buffer) {

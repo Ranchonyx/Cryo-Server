@@ -121,14 +121,14 @@ export class CryoServerWebsocketSession extends EventEmitter {
             });
         }
         this.log(`OUT ${CryoFrameInspector.Inspect(outgoing_message)}`);
-        if (!ackPromise)
-            return Promise.resolve();
         //Spin until we can send again
         while (true) {
             //Try enqueueing the outgoing message
             const ok = this.bp_mgr.enqueue(outgoing_message);
             if (ok) {
                 this.bytes_tx += outgoing_message.byteLength;
+                if (!ackPromise)
+                    return Promise.resolve();
                 return ackPromise.promise;
             }
             //If we were unable, wait until we can enqueue again

@@ -191,7 +191,7 @@ export class CryoBaseManager extends EventEmitter implements CryoBaseManager {
             return;
         }
 
-        await this.acknowledge(ack);
+        found_message.ackPromise?.resolve();
     }
 
     private async HandleUtf8Data(frame: Buffer): Promise<void> {
