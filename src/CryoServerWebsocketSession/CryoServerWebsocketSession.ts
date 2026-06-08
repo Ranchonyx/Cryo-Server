@@ -201,8 +201,6 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         }
 
         this.log(`OUT ${CryoFrameInspector.Inspect(outgoing_message)}`);
-        if (!ackPromise)
-            return Promise.resolve();
 
         //Spin until we can send again
         while (true) {
@@ -210,6 +208,9 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
             const ok = this.bp_mgr!.enqueue(outgoing_message);
             if (ok) {
                 this.bytes_tx += outgoing_message.byteLength;
+                if (!ackPromise)
+                    return Promise.resolve();
+
                 return ackPromise.promise;
             }
 

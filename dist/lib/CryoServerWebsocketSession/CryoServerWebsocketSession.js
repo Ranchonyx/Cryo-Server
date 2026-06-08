@@ -65,6 +65,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
         this.base.on("ready", () => {
             this.stream = new CryoTransactionManager(this.sid, this.bind(this.send), this.bind(this.next_ack), this.bind(this.next_txid), this.bind(this.Destroy), () => this.receivedProtocolFeatures, this.bp_mgr.waitUntilEmpty.bind(this.bp_mgr));
         });
+        this.emit("connected");
     }
     async routeFrame(frame) {
         const type = BufferUtil.GetType(frame);
