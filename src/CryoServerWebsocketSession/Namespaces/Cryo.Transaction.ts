@@ -157,18 +157,18 @@ export class CryoTransactionManager extends EventEmitter implements CryoTransact
         return new Promise<void>(async (resolve, reject) => {
             const start_ack_id = this.next_ack();
             const new_txid = this.next_txid();
-            const chunks: Buffer[] = [];
+            const chunk_frames: Buffer[] = [];
             let totalSize = 0;
-            let seq = 0;
 
             const controller = new AbortController();
             const signal = controller.signal;
             this.outgoingStreams.set(new_txid, controller);
 
             try {
+                let i = 0;
                 for await(const chunk of source as AsyncIterable<Buffer>) {
                     signal.throwIfAborted();
-                    chunks.push(TXChunkFrame.Serialize(this.sid, new_txid, seq++, chunk));
+                    chunk_frames.push(TXChunkFrame.Serialize(this.sid, new_txid, i++, chunk));
                     totalSize += chunk.byteLength;
                 }
 
@@ -183,11 +183,10 @@ export class CryoTransactionManager extends EventEmitter implements CryoTransact
                         signal.throwIfAborted();
 
                         for (let i = start; i < end; i++) {
-                            const chunk_frame = TXChunkFrame.Serialize(this.sid, new_txid, seq++, chunks[i]);
-                            await this.send(chunk_frame);
+                            await this.send(chunk_frames[i]);
                         }
 
-                        if (end >= chunks.length) {
+                        if (end >= chunk_frames.length) {
                             const finish_ack_id = this.next_ack();
                             const finish_frame = TXFinishFrame.Serialize(this.sid, finish_ack_id, new_txid);
 

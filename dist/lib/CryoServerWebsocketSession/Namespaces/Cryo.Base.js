@@ -141,7 +141,7 @@ export class CryoBaseManager extends EventEmitter {
         if (!found_message) {
             return;
         }
-        await this.acknowledge(ack);
+        found_message.ackPromise?.resolve();
     }
     async HandleUtf8Data(frame) {
         const decodedDataMessage = Utf8DataFrame
