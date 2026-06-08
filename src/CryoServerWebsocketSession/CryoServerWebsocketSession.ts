@@ -128,7 +128,9 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
                 () => this.receivedProtocolFeatures,
                 this.bp_mgr.waitUntilEmpty.bind(this.bp_mgr)
             );
-        })
+        });
+
+        this.emit("connected");
     }
 
     private async routeFrame(frame: Buffer) {

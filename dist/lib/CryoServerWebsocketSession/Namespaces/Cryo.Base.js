@@ -108,6 +108,7 @@ export class CryoBaseManager extends EventEmitter {
         }
         await this.acknowledge(decodedInfoMessage.ack);
         this.set_features(decodedInfoMessage.features);
+        this.emit("ready");
     }
     async HandlePingPong(frame) {
         const decodedPingPongMessage = PingPongFrame

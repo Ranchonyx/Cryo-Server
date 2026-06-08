@@ -28,7 +28,7 @@ export class CryoServerWebsocketSession extends EventEmitter {
     bytes_tx = 0;
     receivedProtocolFeatures = 0n;
     base;
-    stream;
+    stream = null;
     bind(func) {
         return func.bind(this);
     }
@@ -47,7 +47,6 @@ export class CryoServerWebsocketSession extends EventEmitter {
         this.forwardMessageStrOrBuf(this.base, "message-binary");
         this.forwardMessageStrOrBuf(this.base, "message-utf8");
         this.forwardMessageStrOrBuf(this.base, "message-error");
-        this.stream = new CryoTransactionManager(this.sid, this.bind(this.send), this.bind(this.next_ack), this.bind(this.next_txid), this.bind(this.Destroy), () => this.receivedProtocolFeatures, this.bp_mgr.waitUntilEmpty.bind(this.bp_mgr));
         //set up listeners
         tcpSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
         tcpSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));
@@ -63,13 +62,16 @@ export class CryoServerWebsocketSession extends EventEmitter {
         //Send the first endpointInfo message
         const msg = EndpointInfoFrame.Serialize(this.sid, this.next_ack());
         this.send(msg);
+        this.base.on("ready", () => {
+            this.stream = new CryoTransactionManager(this.sid, this.bind(this.send), this.bind(this.next_ack), this.bind(this.next_txid), this.bind(this.Destroy), () => this.receivedProtocolFeatures, this.bp_mgr.waitUntilEmpty.bind(this.bp_mgr));
+        });
     }
     async routeFrame(frame) {
         const type = BufferUtil.GetType(frame);
         if (type >= BinaryMessageType.BINARYDATA && type <= BinaryMessageType.ENDPOINT_INFO)
             return this.base.handle(frame);
         if (type >= BinaryMessageType.TX_START && type <= BinaryMessageType.TX_CANCEL)
-            return this.stream.handle(frame);
+            return this.stream?.handle(frame);
         throw new Error(`Unknown frame type ${type}!`);
     }
     next_ack() {
