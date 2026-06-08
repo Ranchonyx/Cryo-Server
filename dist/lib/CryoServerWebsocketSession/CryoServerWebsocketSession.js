@@ -29,6 +29,12 @@ export class CryoServerWebsocketSession extends EventEmitter {
     receivedProtocolFeatures = 0n;
     base;
     stream;
+    bind(func) {
+        return func.bind(this);
+    }
+    forwardMessageStrOrBuf(source, event) {
+        source.on(event, (message) => this.emit(event, message));
+    }
     constructor(webSocket, tcpSocket, remoteName, backpressure_opts, extensionRegistry) {
         super();
         this.webSocket = webSocket;
@@ -37,17 +43,11 @@ export class CryoServerWebsocketSession extends EventEmitter {
         this.extensionRegistry = extensionRegistry;
         this.log = CreateDebugLogger(`CRYO_SERVER_SESSION`);
         this.bp_mgr = new BackpressureManager(webSocket, backpressure_opts, CreateDebugLogger(`CRYO_BACKPRESSURE`));
-        this.base = new CryoBaseManager(this.sid, this.send, this.next_ack.bind(this), this.Destroy, (features) => this.receivedProtocolFeatures = features, this.extensionRegistry.get_executor(this), this.client_ack_tracker, () => this.webSocket.isAlive = true);
-        this.base.on("message-binary", (message) => {
-            this.emit("message-binary", message);
-        });
-        this.base.on("message-utf8", (message) => {
-            this.emit("message-utf8", message);
-        });
-        this.base.on("message-error", (message) => {
-            this.emit("message-error", message);
-        });
-        this.stream = new CryoTransactionManager(this.sid, this.send, this.next_ack.bind(this), this.next_txid.bind(this), this.Destroy, () => this.receivedProtocolFeatures, this.bp_mgr.waitUntilEmpty.bind(this.bp_mgr));
+        this.base = new CryoBaseManager(this.sid, this.bind(this.send), this.bind(this.next_ack), this.bind(this.Destroy), (features) => this.receivedProtocolFeatures = features, this.extensionRegistry.get_executor(this), this.client_ack_tracker, () => this.webSocket.isAlive = true);
+        this.forwardMessageStrOrBuf(this.base, "message-binary");
+        this.forwardMessageStrOrBuf(this.base, "message-utf8");
+        this.forwardMessageStrOrBuf(this.base, "message-error");
+        this.stream = new CryoTransactionManager(this.sid, this.bind(this.send), this.bind(this.next_ack), this.bind(this.next_txid), this.bind(this.Destroy), () => this.receivedProtocolFeatures, this.bp_mgr.waitUntilEmpty.bind(this.bp_mgr));
         //set up listeners
         tcpSocket.once("end", this.TCPSOCKET_HandleRemoteEnd.bind(this));
         tcpSocket.once("error", this.TCPSOCKET_HandleRemoteError.bind(this));

@@ -11,6 +11,7 @@ import {CryoExtensionExecutor} from "../../CryoExtension/CryoExtensionRegistry.j
 import {AckTracker} from "../../Common/AckTracker/AckTracker.js";
 
 interface CryoBaseManagerEvents {
+    "ready": () => void;
     "message-utf8": (message: string) => void;
     "message-binary": (message: Buffer) => void;
     "message-error": (message: string) => void;
@@ -148,6 +149,7 @@ export class CryoBaseManager extends EventEmitter implements CryoBaseManager {
         await this.acknowledge(decodedInfoMessage.ack);
 
         this.set_features(decodedInfoMessage.features);
+        this.emit("ready");
     }
 
     private async HandlePingPong(frame: Buffer): Promise<void> {
