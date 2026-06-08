@@ -246,7 +246,8 @@ export class BackpressureManager {
                 this.queued_bytes -= item!.buffer.byteLength;
 
                 this.ws.send(item!.buffer, {binary: true}, (err) => {
-                    this.log(`Error during websocket send() call`, err);
+                    if(err)
+                        this.log(`Error during websocket send() call`, err);
                 });
             }
         } finally {

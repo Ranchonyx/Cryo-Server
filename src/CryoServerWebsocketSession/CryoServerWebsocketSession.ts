@@ -19,6 +19,7 @@ import {
 import {CryoBaseManager} from "./Namespaces/Cryo.Base.js";
 import {CryoTransactionManager} from "./Namespaces/Cryo.Transaction.js";
 import {CryoFrameInspector} from "../Common/CryoFrameInspector/CryoFrameInspector.js";
+import {CryoWebsocketServerEvents} from "../CryoWebsocketServer/CryoWebsocketServer.js";
 
 
 export interface ICryoServerWebsocketSessionEvents {
@@ -67,6 +68,14 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
     public base: CryoBaseManager;
     public stream: CryoTransactionManager;
 
+    private bind<T extends Function>(func: T): T {
+        return func.bind(this);
+    }
+
+    private forwardMessageStrOrBuf(source: EventEmitter, event: keyof ICryoServerWebsocketSessionEvents) {
+        source.on(event, (message) => this.emit(event, message));
+    }
+
     public constructor(public webSocket: ws & SocketType,
                        private tcpSocket: Duplex,
                        private remoteName: string,
@@ -79,30 +88,25 @@ export class CryoServerWebsocketSession<TStorageKeys extends string = string> ex
         this.bp_mgr = new BackpressureManager(webSocket, backpressure_opts, CreateDebugLogger(`CRYO_BACKPRESSURE`));
         this.base = new CryoBaseManager(
             this.sid,
-            this.send,
-            this.next_ack.bind(this),
-            this.Destroy,
+            this.bind(this.send),
+            this.bind(this.next_ack),
+            this.bind(this.Destroy),
             (features) => this.receivedProtocolFeatures = features,
             this.extensionRegistry.get_executor(this),
             this.client_ack_tracker,
             () => this.webSocket.isAlive = true
         );
-        this.base.on("message-binary", (message) => {
-            this.emit("message-binary", message);
-        });
-        this.base.on("message-utf8", (message) => {
-            this.emit("message-utf8", message);
-        });
-        this.base.on("message-error", (message) => {
-            this.emit("message-error", message);
-        });
+
+        this.forwardMessageStrOrBuf(this.base, "message-binary");
+        this.forwardMessageStrOrBuf(this.base, "message-utf8");
+        this.forwardMessageStrOrBuf(this.base, "message-error");
 
         this.stream = new CryoTransactionManager(
             this.sid,
-            this.send,
-            this.next_ack.bind(this),
-            this.next_txid.bind(this),
-            this.Destroy,
+            this.bind(this.send),
+            this.bind(this.next_ack),
+            this.bind(this.next_txid),
+            this.bind(this.Destroy),
             () => this.receivedProtocolFeatures,
             this.bp_mgr.waitUntilEmpty.bind(this.bp_mgr)
         );
